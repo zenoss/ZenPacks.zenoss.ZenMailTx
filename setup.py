@@ -64,7 +64,7 @@ setup(
     package_data = { 
          '': ['*.txt'],
          NAME: ['objects/*','skins/*/*','services/*', 'reports/*/*',
-                'modeler/*/*', 'daemons/*', 'lib/*', 'libexec/*'],
+                'modeler/*/*', 'daemons/*', 'lib/*/*', 'libexec/*'],
          },  
 
     # Indicate dependencies on other python modules or ZenPacks.  This line
