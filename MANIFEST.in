@@ -1,1 +1,1 @@
-graft ZenPacks/zenoss/* *
+recursive-include ZenPacks *
