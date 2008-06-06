@@ -16,7 +16,7 @@ Post the times, generate events on errors.
 import os
 
 import Globals
-from Products import ZenMailTx
+import ZenPacks.zenoss.ZenMailTx as ZenMailTx
 from Products.ZenRRD.RRDDaemon import RRDDaemon
 from Products.ZenRRD.RRDUtil import RRDUtil
 from Products.ZenUtils.Driver import drive
@@ -32,7 +32,7 @@ from sets import Set
 import Mail
 
 # do not delete this: it is needed for pb/jelly
-from Products.ZenMailTx.ConfigService import Config
+from ZenPacks.zenoss.ZenMailTx.ConfigService import Config
 
 try:
     sorted
@@ -47,7 +47,7 @@ DEFAULT_HEARTBEAT_TIME = 500
 Base = RRDDaemon
 class zenmailtx(Base):
     initialServices = Base.initialServices + [
-        'Products.ZenMailTx.ConfigService'
+        'ZenPacks.zenoss.ZenMailTx.ConfigService'
         ]
 
 
