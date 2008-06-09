@@ -9,6 +9,18 @@ from sets import Set
 from StringIO import StringIO
 from email import Message, Utils
 
+# include our OpenSSL libs in the path
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'lib'))
+
+ssl = None
+try:
+    from twisted.internet import ssl
+except ImportError:
+    import warnings
+    warnings.warn('OpenSSL python bindings are missing')
+
+
 import Globals
 from twisted.internet import reactor, defer
 from twisted.internet.error import ConnectionLost, TimeoutError
@@ -24,13 +36,6 @@ from Products.ZenUtils.Driver import drive
 
 import logging
 log = logging.getLogger('ZenMailTx.Mail')
-
-ssl = None
-try:
-    from twisted.internet import ssl
-except ImportError:
-    import warnings
-    warnings.warn('OpenSSL python bindings are missing')
 
 def timeout(secs):
     d = defer.Deferred()
@@ -189,7 +194,6 @@ def GetMessage(config, pollSeconds, lines=50):
     
 def test():
     def go(driver):
-        import sys
         class Object: pass
         config = Object()
         config.sent = time.time()
@@ -231,7 +235,6 @@ def test():
     reactor.run()
 
 def error(why):
-    import sys
     sys.stderr.write("Error: %s" % (why,))
 
 def stop(ignored):
@@ -242,7 +245,7 @@ def testDevice(device, datasource):
     log.info("Testing mail transaction against device %s" % (device,))
     def go(driver):
         from Products.ZenUtils.ZenScriptBase import ZenScriptBase
-        from Products.ZenMailTx.ConfigService import ConfigService
+        from ZenPacks.zenoss.ZenMailTx.ConfigService import ConfigService
         zendmd = ZenScriptBase(noopts=True, connect=True)
         dmd = zendmd.dmd
         d = dmd.Devices.findDevice(device)
@@ -274,7 +277,7 @@ def testDevice(device, datasource):
 if __name__ == '__main__':
     logging.basicConfig()
     log.setLevel(10)
-    import sys, getopt
+    import getopt
     args, names = getopt.getopt(sys.argv[1:], 'd:s:')
     device = None
     source = None
