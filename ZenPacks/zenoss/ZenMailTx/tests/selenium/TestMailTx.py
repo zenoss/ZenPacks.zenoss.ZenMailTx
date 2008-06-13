@@ -36,8 +36,8 @@ class TestMailTx(SelTestBase):
     """Defines a class that runs tests under the MailTx zenpack"""
 
     def _goToPerformanceConfTemplate(self):
-        self.waitForElement("link=Monitors")
-        self.selenium.click("link=Monitors")
+        self.waitForElement("link=Collectors")
+        self.selenium.click("link=Collectors")
         self.selenium.wait_for_page_to_load(self.WAITTIME)
         self.waitForElement("id=PerformanceMonitorlistperformanceTemplates")
         self.selenium.click("id=PerformanceMonitorlistperformanceTemplates")
