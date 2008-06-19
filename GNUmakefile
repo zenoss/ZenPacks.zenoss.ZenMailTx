@@ -7,6 +7,7 @@
 ZP_DIR=$(PWD)/ZenPacks/zenoss/ZenMailTx
 LIB_DIR=$(ZP_DIR)/lib
 BIN_DIR=$(ZP_DIR)/bin
+PYTHON=$(shell which python2.4)
 
 OPENSSL=$(patsubst src/%.tar.gz,%,$(wildcard src/pyOpenSSL*.tar.gz))
 
@@ -22,7 +23,7 @@ build:
 	rm -rf $(OPENSSL)
 	mkdir -p build $(LIB_DIR) $(BIN_DIR)
 	cd build ; gzip -dc ../src/$(OPENSSL).tar.gz | tar -xf -
-	cd build/$(OPENSSL) ; python setup.py install	\
+	cd build/$(OPENSSL) ; $(PYTHON) setup.py install	\
 				--install-lib="$(LIB_DIR)"	\
 				--install-scripts="$(BIN_DIR)"
 
