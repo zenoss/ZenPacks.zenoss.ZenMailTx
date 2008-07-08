@@ -16,7 +16,7 @@ default: egg
 
 egg:
     # setup.py will call 'make build' before creating the egg
-	python setup.py bdist_egg
+	$(PYTHON) setup.py bdist_egg
 
 
 build:
