@@ -106,30 +106,36 @@ class zenmailtx(Base):
                 break
             if cfg.nextRun() <= now:
                 outstanding += 1
-                def sendReceive(driver):
-                    cfg.sent = time.time()
-                    yield Mail.SendMessage(cfg)
-                    driver.next()
-                    endSend = time.time()
-                    yield Mail.GetMessage(cfg, self.options.pollingcycle)
-                    driver.next()
-                    endFetch = time.time()
-                    fetchTime = endFetch - endSend
-                    self.postResults(cfg,
-                                     endFetch - cfg.sent,
-                                     endSend - cfg.sent,
-                                     endFetch - endSend)
-                d = drive(sendReceive)
-                def resetId(arg):
-                    cfg.msgid = None
-                    return arg
-                d.addBoth(resetId)
+                def inner(driver):
+                    try:
+                        cfg.sent = time.time()
+                        self.log.debug("Sending message to %s", cfg.device)
+                        yield Mail.SendMessage(cfg)
+                        driver.next()
+                        endSend = time.time()
+                        self.log.debug("Getting message from %s", cfg.device)
+                        yield Mail.GetMessage(cfg, self.options.pollingcycle)
+                        driver.next()
+                        endFetch = time.time()
+                        fetchTime = endFetch - endSend
+                        self.log.debug("Total trip time to/from %s: %.1f",
+                                       cfg.device, endFetch - cfg.sent)
+                        self.postResults(cfg,
+                                         endFetch - cfg.sent,
+                                         endSend - cfg.sent,
+                                         endFetch - endSend)
+                        cfg.msgid = None
+                    except Exception, ex:
+                        cfg.msgid = None
+                        log.exception(ex)
+                        raise
+                d = drive(inner)
                 d.addBoth(self.processSchedule)
+
         if schedule:
             earliest = schedule[0].nextRun()
             if earliest > now:
                 reactor.callLater(earliest - now, self.processSchedule)
-        return self.firstRun
 
 
     def postResults(self, cfg, totalTime, sendTime, fetchTime):
@@ -146,29 +152,6 @@ class zenmailtx(Base):
                 self.sendThresholdEvent(**evt)
 
 
-    def fetchInitialConfigAndScan(self, driver):
-        now = time.time()
-        self.log.info("fetching default RRDCreateCommand")
-        yield self.model().callRemote('getDefaultRRDCreateCommand')
-        createCommand = driver.next()
-        self.rrd = RRDUtil(createCommand, DEFAULT_HEARTBEAT_TIME)
-        self.log.info("Getting Threshold Classes")
-        yield self.model().callRemote('getThresholdClasses')
-        self.remote_updateThresholdClasses(driver.next())
-        self.log.info("Loading Config")
-        yield self.model().callRemote('getConfig')
-        self.updateConfig(driver.next())
-        self.log.info("Getting current status")
-        yield self.model().callRemote('getStatus')
-        self.updateStatus(driver.next())
-        self.log.info("Starting mail tests")
-        yield self.processSchedule()
-        driver.next()
-        self.log.info("Processed %d mail round trips in %s seconds",
-                      len(self.config),
-                      time.time() - now)
-
-
     def heartbeat(self, *unused):
         Base.heartbeat(self)
         reactor.callLater(self.heartbeatTimeout / 3, self.heartbeat)
@@ -176,7 +159,33 @@ class zenmailtx(Base):
         
     def connected(self):
         Base.heartbeat(self)
-        d = drive(self.fetchInitialConfigAndScan)
+        def inner(driver):
+            try:
+                now = time.time()
+                self.log.info("fetching default RRDCreateCommand")
+                yield self.model().callRemote('getDefaultRRDCreateCommand')
+                createCommand = driver.next()
+                self.rrd = RRDUtil(createCommand, DEFAULT_HEARTBEAT_TIME)
+                self.log.info("Getting Threshold Classes")
+                yield self.model().callRemote('getThresholdClasses')
+                self.remote_updateThresholdClasses(driver.next())
+                self.log.info("Loading Config")
+                yield self.model().callRemote('getConfig')
+                self.updateConfig(driver.next())
+                self.log.info("Getting current status")
+                yield self.model().callRemote('getStatus')
+                self.updateStatus(driver.next())
+                self.log.info("Starting mail tests")
+                self.processSchedule()
+                yield self.firstRun
+                driver.next()
+                self.log.info("Processed %d mail round trips in %s seconds",
+                              len(self.config),
+                              time.time() - now)
+            except Exception, ex:
+                log.exception(ex)
+                raise
+        d = drive(inner)
         d.addCallbacks(self.heartbeat, self.errorStop)
 
 

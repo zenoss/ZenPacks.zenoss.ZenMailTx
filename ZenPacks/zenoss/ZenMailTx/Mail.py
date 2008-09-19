@@ -35,7 +35,7 @@ from twisted.mail.pop3 import AdvancedPOP3Client
 from Products.ZenUtils.Driver import drive
 
 import logging
-log = logging.getLogger('ZenMailTx.Mail')
+log = logging.getLogger('zen.MailTx.Mail')
 
 def timeout(secs):
     d = defer.Deferred()
@@ -100,57 +100,58 @@ def fetchOnce(config, lines):
         message = None
         def connectionMade(self):
             Base.connectionMade(self)
-            def conversation(driver):
-                self.allowInsecureLogin = config.popAllowInsecureLogin
-                yield self.login(config.popUsername, config.popPassword)
-                log.debug('login %s', driver.next())
-                yield self.listUID()
-                log.debug('uids %r', driver.next())
-                junk = Set()
-                for i, uid in enumerate(driver.next()):
-                    # skip any messages we've scanned before
-                    if uid is None or uid in config.ignoreIds:
-                        continue
-                    # fetch the top of the message
-                    yield self.retrieve(i, lines=lines)
-                    for line in driver.next():
-                        parts = line.split(':', 1)
-                        if len(parts) != 2:
+            def inner(driver):
+                try:
+                    self.allowInsecureLogin = config.popAllowInsecureLogin
+                    yield self.login(config.popUsername, config.popPassword)
+                    log.debug('login %s', driver.next())
+                    yield self.listUID()
+                    log.debug('uids %r', driver.next())
+                    junk = Set()
+                    for i, uid in enumerate(driver.next()):
+                        # skip any messages we've scanned before
+                        if uid is None or uid in config.ignoreIds:
                             continue
-                        field = parts[0].strip().lower()
-                        # this is a zenoss message: baletit!
-                        if field == 'x-zenoss-time-sent':
-                            junk.add(i)
-                        if field != 'message-id':
+                        # fetch the top of the message
+                        yield self.retrieve(i, lines=lines)
+                        for line in driver.next():
+                            parts = line.split(':', 1)
+                            if len(parts) != 2:
+                                continue
+                            field = parts[0].strip().lower()
+                            # this is a zenoss message: baletit!
+                            if field == 'x-zenoss-time-sent':
+                                junk.add(i)
+                            if field != 'message-id':
+                                continue
+                            if parts[1].strip() != config.msgid:
+                                continue
+                            break
+                        else:
+                            # add scanned message to the ignorables
+                            config.ignoreIds.add(uid)
                             continue
-                        if parts[1].strip() != config.msgid:
-                            continue
-                        break
-                    else:
-                        # add scanned message to the ignorables
-                        config.ignoreIds.add(uid)
-                        continue
-                    # found it!
-                    log.debug("Found msgid %s", config.msgid)
-                    junk.add(i)
-                    yield self.retrieve(i)
-                    # FIXME: use \r\n?
-                    self.message = '\n'.join(driver.next())
-                log.debug('Deleting: %r', junk)
-                for msg in junk:
-                    yield self.delete(msg)
+                        # found it!
+                        log.debug("Found msgid %s", config.msgid)
+                        junk.add(i)
+                        yield self.retrieve(i)
+                        # FIXME: use \r\n?
+                        self.message = '\n'.join(driver.next())
+                    log.debug('Deleting: %r', junk)
+                    for msg in junk:
+                        yield self.delete(msg)
+                        driver.next()
+                    yield self.quit()
                     driver.next()
-                yield self.quit()
-                driver.next()
-                # yield the value we want to show up in the deferred result
-                yield defer.succeed(self.message)
-                driver.next()
-            drive(conversation).chainDeferred(result)
+                    # yield the value we want to show up in the deferred result
+                    yield defer.succeed(self.message)
+                    driver.next()
+                except Exception, ex:
+                    log.exception(ex)
+            drive(inner).chainDeferred(result)
 
         def connectionLost(self, why):
             log.debug("POP client disconnected from %s", config.popHost)
-            if not result.called:
-                result.errback(ConnectionLost())
 
     args = ()
     connect = reactor.connectTCP
