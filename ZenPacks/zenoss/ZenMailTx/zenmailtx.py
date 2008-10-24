@@ -183,7 +183,7 @@ class zenmailtx(Base):
                               len(self.config),
                               time.time() - now)
             except Exception, ex:
-                log.exception(ex)
+                self.log.exception(ex)
                 raise
         d = drive(inner)
         d.addCallbacks(self.heartbeat, self.errorStop)
