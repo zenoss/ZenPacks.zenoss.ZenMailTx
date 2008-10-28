@@ -84,7 +84,7 @@ class ConfigService(PerformanceConfig):
         result = []
         for template in device.getRRDTemplates():
             for ds in template.getRRDDataSources():
-                if ds.sourcetype == 'MAILTX':
+                if ds.sourcetype == 'MAILTX' and ds.enabled:
                     result.append(Config(device, template, ds))
         return result
 
