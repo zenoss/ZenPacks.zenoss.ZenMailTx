@@ -153,11 +153,12 @@
         <tr>
             <td class="tableheader">SMTP Password</td>
             <td class="tablevalues" tal:condition="editable">
-            <input class="tablevalues" type="text" name="smtpPassword:string" size="50"
+            <input class="tablevalues" autocomplete="off" type="password"
+                name="smtpPassword:string" size="50"
                 tal:attributes="value here/smtpPassword" />
             </td>
             <td class="tablevalues" tal:condition="not:editable" 
-                tal:content="here/smtpPassword"/>
+                tal:content="string:******"/>
         </tr>
 	<tr>
 	    <td class="tableheader">SMTP Transport Security</td>
@@ -201,14 +202,15 @@
         <tr>
             <td class="tableheader">POP Password</td>
             <td class="tablevalues" tal:condition="editable">
-            <input class="tablevalues" type="text" name="popPassword:string" size="50"
+            <input class="tablevalues" autocomplete="off" type="password"
+                name="popPassword:string" size="50"
                 tal:attributes="value here/popPassword" />
             </td>
             <td class="tablevalues" tal:condition="not:editable" 
-                tal:content="here/popPassword"/>
+                tal:content="string:******"/>
         </tr>
 	<tr>
-	    <td class="tableheader">POP  Transport Security</td>
+	    <td class="tableheader">POP Transport Security</td>
 	    <td class="tablevalues" tal:condition="editable">
 	    <select class="tablevalues" name="popAuth:string">
 		<option tal:repeat="e python:here.AuthModes" tal:content="e"
