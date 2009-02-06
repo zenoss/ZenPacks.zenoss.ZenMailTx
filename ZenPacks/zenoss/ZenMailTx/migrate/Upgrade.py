@@ -8,7 +8,7 @@ from Products.ZenModel.migrate.Migrate import Version
 import logging
 
 class Upgrade:
-    version = Version(0, 9, 0)
+    version = Version(2, 0, 1)
 
     oldAuthor = None
 
