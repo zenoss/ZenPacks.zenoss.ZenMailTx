@@ -8,12 +8,12 @@
 # These variables are overwritten by Zenoss when the ZenPack is exported
 # or saved.  Do not modify them directly here.
 NAME = 'ZenPacks.zenoss.ZenMailTx'
-VERSION = '2.0.1'
+VERSION = '2.0.2'
 AUTHOR = 'Zenoss'
 LICENSE = ''
 NAMESPACE_PACKAGES = ['ZenPacks', 'ZenPacks.zenoss']
 INSTALL_REQUIRES = []
-COMPAT_ZENOSS_VERS = '>= 2.2'
+COMPAT_ZENOSS_VERS = '>=2.3.70'
 PREV_ZENPACK_NAME = 'ZenMailTx'
 # STOP_REPLACEMENTS
 ################################
