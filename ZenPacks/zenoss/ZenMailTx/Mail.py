@@ -18,8 +18,10 @@ try:
     from twisted.internet import ssl
 except ImportError:
     import warnings
-    warnings.warn('OpenSSL python bindings are missing')
+    warnings.warn('OpenSSL Python bindings are missing')
 
+
+import traceback
 
 import Globals
 from twisted.internet import reactor, defer
@@ -30,7 +32,7 @@ from twisted.mail.smtp import ESMTPSenderFactory, SMTPSenderFactory
 
 # POP3 imports
 from twisted.internet import protocol
-from twisted.mail.pop3 import AdvancedPOP3Client
+from twisted.mail.pop3 import AdvancedPOP3Client, ServerErrorResponse
 
 from Products.ZenUtils.Driver import drive
 
@@ -54,8 +56,13 @@ def SendMessage(config):
     msg['X-Zenoss-Time-Sent'] = str(config.sent)
     msg['Subject'] = 'Zenoss Round-Trip Mail Message'
     msg.set_payload(config.messageBody)
-    msg = StringIO(msg.as_string())
+    log.debug("Message id %s's length is %s bytes" % (
+              msgid, len(msg.as_string())))
+    log.debug("Message id %s content:\n%s" % (
+              msgid, msg.as_string()))
+    msgIO = StringIO(msg.as_string())
     result = defer.Deferred()
+
     # figure out how we should connect
     connect = reactor.connectTCP
     port = 25
@@ -71,21 +78,30 @@ def SendMessage(config):
         pass
     else:
         kwargs.update(dict(requireTransportSecurity = False))
+
     if config.smtpUsername:
+        log.debug( "ESMTP login as %s/%s" % (
+                   config.smtpUsername, "*" * len(config.smtpPassword)))
         factory = ESMTPSenderFactory(config.smtpUsername,
                                      config.smtpPassword,
                                      config.fromAddress,
                                      (config.toAddress,),
-                                     msg,
+                                     msgIO,
                                      result,
                                      **kwargs)
     else:
         factory = SMTPSenderFactory(config.fromAddress,
                                     (config.toAddress,),
-                                    msg,
+                                    msgIO,
                                     result)
-        
+
+    def clientConnectionFailed(self, why):
+        result.errback(why)
+    factory.clientConnectionFailed = clientConnectionFailed
+
     # initiate the message send
+    log.debug( "Sending message to %s:%s with args: %s" % (
+                    config.smtpHost, config.smtpPort or port, args ))
     connect(config.smtpHost, config.smtpPort or port, factory, *args)
     return result
 
@@ -103,10 +119,18 @@ def fetchOnce(config, lines):
             def inner(driver):
                 try:
                     self.allowInsecureLogin = config.popAllowInsecureLogin
+                    log.debug('Login credentials: %s/%s' % (
+                              config.popUsername, '*' * len(config.popPassword)))
                     yield self.login(config.popUsername, config.popPassword)
-                    log.debug('login %s', driver.next())
+                    msg = driver.next()
+                    if msg:
+                        log.debug('Login message: %s' % msg)
+                    else:
+                        log.debug('No message from server!')
+
                     yield self.listUID()
-                    log.debug('uids %r', driver.next())
+                    log.debug('Found message uids on POP server %r', driver.next())
+                    log.debug('Scanning for messages...')
                     junk = Set()
                     for i, uid in enumerate(driver.next()):
                         # skip any messages we've scanned before
@@ -131,14 +155,15 @@ def fetchOnce(config, lines):
                             # add scanned message to the ignorables
                             config.ignoreIds.add(uid)
                             continue
+
                         # found it!
                         log.debug("Found msgid %s", config.msgid)
                         junk.add(i)
                         yield self.retrieve(i)
-                        # FIXME: use \r\n?
                         self.message = '\n'.join(driver.next())
-                    log.debug('Deleting: %r', junk)
+
                     for msg in junk:
+                        log.debug('Deleting message %s' % msg)
                         yield self.delete(msg)
                         driver.next()
                     yield self.quit()
@@ -146,6 +171,11 @@ def fetchOnce(config, lines):
                     # yield the value we want to show up in the deferred result
                     yield defer.succeed(self.message)
                     driver.next()
+
+                except ServerErrorResponse, ex:
+                    dsdev, ds = config.key()
+                    log.error("Error from %s/%s server %s: %s" % (
+                              dsdev, ds, config.popHost, ex ))
                 except Exception, ex:
                     log.exception(ex)
             drive(inner).chainDeferred(result)
@@ -162,12 +192,18 @@ def fetchOnce(config, lines):
         port = 995
     factory = protocol.ClientFactory()
     factory.protocol = POP3Client
-    log.debug("POP client connected to %s", config.popHost)
+
+    def clientConnectionFailed(self, why):
+        result.errback(why)
+    factory.clientConnectionFailed = clientConnectionFailed
+
+    log.debug("POP client attempting connection to %s", config.popHost)
     connect(config.popHost, config.popPort or port, factory, *args)
     return result
 
+
 def GetMessage(config, pollSeconds, lines=50):
-    "poll a pop account for the message that goes with this config"
+    "Poll a pop account for the message that goes with this config"
     if config.msgid is None:
         return defer.fail(ValueError("No outstanding message for %s:%s" % (
                                      config.device, config.name)))
@@ -192,7 +228,7 @@ def GetMessage(config, pollSeconds, lines=50):
             yield timeout(min(remaining, pollSeconds))
             driver.next()
     return drive(poll)
-    
+
 def test():
     def go(driver):
         class Object: pass

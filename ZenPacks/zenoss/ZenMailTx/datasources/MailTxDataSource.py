@@ -44,7 +44,7 @@ class MailTxDataSource(ZenPackPersistence, Base):
     popAllowInsecureLogin = False
     cycleTime = 300
     timeout = 300
-    messageBody = '''This message is used by the Zenoss monitoring system  to gauge e-mail delivery transaction time. Please ignore this message.'''
+    messageBody = '''This message is used by the Zenoss monitoring system to gauge e-mail delivery transaction time. Please ignore this message.'''
     
     eventClass = '/App/Email/Loop'
 

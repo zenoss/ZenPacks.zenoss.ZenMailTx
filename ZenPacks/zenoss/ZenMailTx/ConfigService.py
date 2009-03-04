@@ -24,7 +24,7 @@ pb.setUnjellyableForClass(RRDConfig, RRDConfig)
     
 
 class Config(pb.Copyable, pb.RemoteCopy):
-    "Carries the config from ZenHub over to the ZenWinTrip collector"
+    "Carries the config from ZenHub over to the zenmailtx collector"
 
     sent = 0.
     msgid = None

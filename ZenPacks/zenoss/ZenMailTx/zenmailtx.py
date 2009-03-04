@@ -1,6 +1,6 @@
 ######################################################################
 #
-# Copyright 2007 Zenoss, Inc.  All Rights Reserved.
+# Copyright 2009 Zenoss, Inc.  All Rights Reserved.
 #
 ######################################################################
 
@@ -11,9 +11,16 @@ Test round-trip email delivery time.
 Send a message using SMTP, fetch it back using POP.
 Post the times, generate events on errors.
 
+Configuration of this daemon is through a datasource that is attached
+to a device.
 '''
 
 import os
+import time
+import traceback
+from sets import Set
+
+import Mail
 
 import Globals
 import ZenPacks.zenoss.ZenMailTx as ZenMailTx
@@ -22,17 +29,18 @@ from Products.ZenRRD.RRDUtil import RRDUtil
 from Products.ZenUtils.Driver import drive
 from Products.ZenRRD.Thresholds import Thresholds
 from Products.ZenModel.RRDDataPoint import SEPARATOR
+from Products.ZenEvents import Event
 
 from twisted.python import failure
-from twisted.internet import defer, reactor
-
-import time
-from sets import Set
-
-import Mail
+from twisted.internet import defer, reactor, error
+from twisted.internet import ssl
+from twisted.mail.pop3 import ServerErrorResponse
+from twisted.mail.smtp import AUTHDeclinedError, SMTPClientError
 
 # do not delete this: it is needed for pb/jelly
 from ZenPacks.zenoss.ZenMailTx.ConfigService import Config
+
+mailEventClass = '/Status'
 
 try:
     sorted
@@ -55,24 +63,37 @@ class zenmailtx(Base):
         Base.__init__(self, 'zenmailtx')
         self.firstRun = defer.Deferred()
         self.config = []
-        self.clearables = Set()
         self.thresholds = Thresholds()
 
 
     def remote_deleteDevice(self, doomed):
-        self.log.debug("Async delete device %s" % doomed)
+        self.log.debug("zenhub requested us to delete"
+                       " device %s -- ignoring" % doomed)
 
 
     def remote_updateDeviceConfig(self, config):
-        self.log.debug("Async device update")
+        self.log.debug("Configuration device update from zenhub")
         self.updateConfig(config)
 
 
-    def updateConfig(self, config):
+    def updateConfig(self, newconfig):
+        self.log.debug("Received %d configuration updates from zenhub" % (
+                       len(newconfig)))
         orig = {}
         for obj in self.config:
             orig[obj.key()] = obj
-        for obj in config:
+
+        for obj in newconfig:
+            deviceName = obj.key()[0]
+            if hasattr(self.options, 'device') and \
+               self.options.device != '' and \
+               self.options.device != deviceName:
+                self.log.debug("Skipping update for %s as we're" \
+                               " only looking for %s updates" % (
+                               deviceName, self.options.device))
+                continue
+
+            self.log.debug("Configuration object for %s/%s found" % obj.key())
             old = orig.get(obj.key(), None)
             if old is None:
                 obj.ignoreIds = Set()
@@ -82,9 +103,79 @@ class zenmailtx(Base):
             self.thresholds.updateList(obj.thresholds)
 
 
-    def updateStatus(self, status):
-        self.log.debug("Status %r", status)
-        self.clearables = Set(status)
+    def handleSmtpError(self, cfg, ex):
+        cfg.msgid = None
+        dsdev, ds = cfg.key()
+        msg = str(ex)
+        if isinstance(ex, error.ConnectionRefusedError):
+            summary = "Connection refused for %s/%s SMTP server %s" % (
+                      dsdev, ds, cfg.smtpHost)
+
+        elif isinstance(ex, error.TimeoutError):
+            summary = "Timed out while sending message for %s/%s" % (
+                      dsdev, ds)
+
+        elif isinstance(ex, error.DNSLookupError):
+            summary = "Unable to resolve SMTP server %s for %s/%s" % (
+                      cfg.smtpHost, dsdev, ds)
+
+        elif isinstance(ex, AUTHDeclinedError):
+            summary = "Authentication declined for SMTP server %s for %s/%s" % (
+                       cfg.smtpHost, dsdev, ds)
+
+        elif isinstance(ex, ServerErrorResponse):
+            summary = "Received error '%s' while sending message for %s/%s" % (
+                       ex, dsdev, ds)
+        else:
+            summary = "Unknown exception in zenmailtx during SMTP transaction"
+            msg = '%s' % traceback.format_exc()
+
+        self.log.error(msg)
+        errorEvent = dict( device=cfg.device, component='zenmailtx',
+            dedupid='%s|%s|%s|%s' % (dsdev, ds, cfg.smtpHost, cfg.popHost),
+            severity=Event.Error, summary=summary, message=msg,
+            eventGroup="mail", dataSource=ds, eventClass=mailEventClass,
+            smtpHost=cfg.smtpHost, smtpUsername=cfg.smtpUsername,
+            fromAddress=cfg.fromAddress, toAddress=cfg.toAddress,
+            smtpAuth=cfg.smtpAuth,
+        )
+        self.sendEvent(errorEvent)
+
+
+    def handlePopError(self, cfg, ex):
+        cfg.msgid = None
+        dsdev, ds = cfg.key()
+        msg = str(ex)
+        if isinstance(ex, error.ConnectionRefusedError):
+            summary = "Connection refused for %s/%s POP server %s" % (
+                      dsdev, ds, cfg.popHost)
+
+        elif isinstance(ex, error.TimeoutError):
+            summary = "Timed out while receiving message for %s/%s" % (
+                      dsdev, ds)
+
+        elif isinstance(ex, error.DNSLookupError):
+            summary = "Unable to resolve POP server %s for %s/%s" % (
+                      cfg.popHost, dsdev, ds)
+
+        elif isinstance(ex, ServerErrorResponse):
+            summary = "Received error '%s' while receiving message for %s/%s" % (
+                       ex, dsdev, ds)
+
+        else:
+            summary = "Unknown exception in zenmailtx during POP transaction"
+            msg = traceback.format_exc()
+
+        self.log.error(msg)
+        errorEvent = dict( device=cfg.device, component='zenmailtx',
+            dedupid='%s|%s|%s|%s' % (dsdev, ds, cfg.smtpHost, cfg.popHost),
+            severity=Event.Error, summary=summary, message=msg,
+            eventGroup="mail", dataSource=ds, eventClass=mailEventClass,
+            popHost=cfg.popHost, popUsername=cfg.popUsername,
+            popAllowInsecureLogin=cfg.popAllowInsecureLogin,
+            popAuth=cfg.popAuth,
+        )
+        self.sendEvent(errorEvent)
 
 
     def processSchedule(self, result = None):
@@ -94,11 +185,14 @@ class zenmailtx(Base):
 
         def compare(a, b):
             return cmp(a.nextRun(), b.nextRun())
+
         schedule = sorted(self.config, compare)
+        self.log.info("Scheduling %d runs" % len(schedule))
         if len([s for s in schedule if not s.completedOneAttempt()]) == 0:
             # everything has executed at least once: tell someone
             if not self.firstRun.called:
                 self.firstRun.callback(None)
+
         outstanding = len([c for c in schedule if c.hasMessageOutstanding()])
         now = time.time()
         for cfg in schedule:
@@ -113,12 +207,27 @@ class zenmailtx(Base):
                         yield Mail.SendMessage(cfg)
                         driver.next()
                         endSend = time.time()
-                        self.log.debug("Getting message from %s", cfg.device)
+
+                    except (SystemExit, KeyboardInterrupt):
+                        raise
+                    except Exception, ex:
+                        self.handleSmtpError(cfg, ex)
+                        raise
+
+                    try:
+                        self.log.debug("Getting message from %s", cfg.popHost)
                         yield Mail.GetMessage(cfg, self.options.pollingcycle)
                         driver.next()
+                    except (SystemExit, KeyboardInterrupt):
+                        raise
+                    except Exception, ex:
+                        self.handlePopError(cfg, ex)
+                        raise
+
+                    try:
                         endFetch = time.time()
                         fetchTime = endFetch - endSend
-                        self.log.debug("Total trip time to/from %s: %.1f",
+                        self.log.debug("Total trip time to/from %s: %.1fs",
                                        cfg.device, endFetch - cfg.sent)
                         self.postResults(cfg,
                                          endFetch - cfg.sent,
@@ -127,8 +236,17 @@ class zenmailtx(Base):
                         cfg.msgid = None
                     except Exception, ex:
                         cfg.msgid = None
-                        log.exception(ex)
+                        self.log.exception(ex)
+                        dsdev, ds = cfg.key()
+                        self.sendEvent(dict(
+                          device=cfg.device, component='zenmailtx', severity=Event.Error,
+                          dedupid='%s|%s|%s|%s' % (dsdev, ds, cfg.smtpHost, cfg.popHost),
+                          summary="Unknown exception in zenmailtx while writing results",
+                          message=traceback.format_exc(),
+                          eventGroup="mail", dataSource=ds, eventClass=mailEventClass,
+                        ))
                         raise
+
                 d = drive(inner)
                 d.addBoth(self.processSchedule)
 
@@ -139,8 +257,9 @@ class zenmailtx(Base):
 
 
     def postResults(self, cfg, totalTime, sendTime, fetchTime):
-        self.log.info("Device %s cycle time %0.2f (sent %0.2f, fetch %0.2f)",
+        msg = "Device %s cycle time %0.2fs (sent %0.2fs, fetch %0.2fs)" % (
                       cfg.device, totalTime, sendTime, fetchTime)
+        self.log.info(msg)
         for name in ('totalTime', 'sendTime', 'fetchTime'):
             dpName = '%s%c%s' % (cfg.name, SEPARATOR, name)
             rrdConfig = cfg.rrdConfig[dpName]
@@ -148,38 +267,46 @@ class zenmailtx(Base):
             value = self.rrd.save(path, locals()[name], 'GAUGE',
                                   rrdConfig.command, cfg.cycleTime,
                                   rrdConfig.min, rrdConfig.max)
+
             for evt in self.thresholds.check(path, time.time(), value):
                 self.sendThresholdEvent(**evt)
+
+        dsdev, ds = cfg.key()
+        self.sendEvent(dict(
+            device=cfg.device, component='zenmailtx', severity=Event.Clear,
+            dedupid='%s|%s|%s|%s' % (dsdev, ds, cfg.smtpHost, cfg.popHost),
+            summary="Successfully completed transaction",
+            message=msg,
+            eventGroup="mail", dataSource=ds, eventClass=mailEventClass,
+        ))
 
 
     def heartbeat(self, *unused):
         Base.heartbeat(self)
         reactor.callLater(self.heartbeatTimeout / 3, self.heartbeat)
 
-        
+
     def connected(self):
+        self.log.debug("Gathering information from zenhub")
         Base.heartbeat(self)
         def inner(driver):
             try:
                 now = time.time()
-                self.log.info("fetching default RRDCreateCommand")
+                self.log.info("Fetching default RRDCreateCommand")
                 yield self.model().callRemote('getDefaultRRDCreateCommand')
                 createCommand = driver.next()
                 self.rrd = RRDUtil(createCommand, DEFAULT_HEARTBEAT_TIME)
                 self.log.info("Getting Threshold Classes")
                 yield self.model().callRemote('getThresholdClasses')
                 self.remote_updateThresholdClasses(driver.next())
-                self.log.info("Loading Config")
+                self.log.info("Retrieving configuration from zenhub...")
                 yield self.model().callRemote('getConfig')
                 self.updateConfig(driver.next())
-                self.log.info("Getting current status")
-                yield self.model().callRemote('getStatus')
-                self.updateStatus(driver.next())
                 self.log.info("Starting mail tests")
                 self.processSchedule()
                 yield self.firstRun
                 driver.next()
-                self.log.info("Processed %d mail round trips in %s seconds",
+                self.log.info("Processed %d mail round-trips in %0.2f seconds",
                               len(self.config),
                               time.time() - now)
             except Exception, ex:
