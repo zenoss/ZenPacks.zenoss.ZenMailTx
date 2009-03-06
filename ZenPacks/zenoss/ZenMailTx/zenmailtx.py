@@ -33,7 +33,6 @@ from Products.ZenEvents import Event
 
 from twisted.python import failure
 from twisted.internet import defer, reactor, error
-from twisted.internet import ssl
 from twisted.mail.pop3 import ServerErrorResponse
 from twisted.mail.smtp import AUTHDeclinedError, SMTPClientError
 
