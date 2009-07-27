@@ -76,6 +76,10 @@ class zenmailtx(Base):
 
 
     def updateConfig(self, newconfig):
+        if isinstance(newconfig, failure.Failure):
+            self.log.error("Received configuration failure (%s) from zenhub" % (
+                           str(newconfig)))
+            return
         self.log.debug("Received %d configuration updates from zenhub" % (
                        len(newconfig)))
         orig = {}
