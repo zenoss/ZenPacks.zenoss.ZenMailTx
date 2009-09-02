@@ -96,9 +96,12 @@ class MailTxDataSource(ZenPackPersistence, Base):
 
     def __init__(self, id, title=None, buildRelations=True):
         Base.__init__(self, id, title, buildRelations)
-        for dp in ('totalTime', 'fetchTime', 'sendTime'):
-            if not hasattr(self.datapoints, dp):
-                self.manage_addRRDDataPoint(dp)
+        #when being copied the relation attributes won't appear till later
+        if getattr(self, 'datapoints', None) is None:
+            dpIds = map(lambda x: x.id, self.datapoints())
+            for dp in ('totalTime', 'fetchTime', 'sendTime'):
+                if not dp in dpIds:
+                    self.manage_addRRDDataPoint(dp)
 
     def zmanage_editProperties(self, REQUEST=None):
         '''validation, etc'''
