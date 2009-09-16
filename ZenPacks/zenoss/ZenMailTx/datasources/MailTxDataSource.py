@@ -97,7 +97,7 @@ class MailTxDataSource(ZenPackPersistence, Base):
     def __init__(self, id, title=None, buildRelations=True):
         Base.__init__(self, id, title, buildRelations)
         #when being copied the relation attributes won't appear till later
-        if getattr(self, 'datapoints', None) is None:
+        if getattr(self, 'datapoints', None) is not None:
             dpIds = map(lambda x: x.id, self.datapoints())
             for dp in ('totalTime', 'fetchTime', 'sendTime'):
                 if not dp in dpIds:
