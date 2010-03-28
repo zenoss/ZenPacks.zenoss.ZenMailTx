@@ -7,7 +7,7 @@
 ZP_DIR=$(PWD)/ZenPacks/zenoss/ZenMailTx
 LIB_DIR=$(ZP_DIR)/lib
 BIN_DIR=$(ZP_DIR)/bin
-PYTHON=$(shell which python2.4)
+PYTHON=$(shell which python2.6)
 
 OPENSSL=$(patsubst src/%.tar.gz,%,$(wildcard src/pyOpenSSL*.tar.gz))
 
