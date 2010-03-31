@@ -8,12 +8,12 @@
 # These variables are overwritten by Zenoss when the ZenPack is exported
 # or saved.  Do not modify them directly here.
 NAME = 'ZenPacks.zenoss.ZenMailTx'
-VERSION = '2.1.1'
+VERSION = '2.1.2'
 AUTHOR = 'Zenoss'
 LICENSE = ''
 NAMESPACE_PACKAGES = ['ZenPacks', 'ZenPacks.zenoss']
 INSTALL_REQUIRES = []
-COMPAT_ZENOSS_VERS = '>=2.3.70'
+COMPAT_ZENOSS_VERS = '>=2.5.70'
 PREV_ZENPACK_NAME = 'ZenMailTx'
 # STOP_REPLACEMENTS
 ################################
@@ -38,9 +38,9 @@ class MyDist(Distribution):
 import subprocess
 p = subprocess.Popen('make build', shell=True)
 if p.poll() == None:
-	p.wait()
+     p.wait()
 if p.returncode != 0:
-    raise Exception('make exited with an error: %s' % p.returncode)
+     raise Exception('make exited with an error: %s' % p.returncode)
 
 setup(
     # This ZenPack metadata should usually be edited with the Zenoss
