@@ -21,25 +21,25 @@ class IMailTxDataSourceInfo(IRRDDataSourceInfo):
     eventKey = schema.Text(title=_t(u"Event Key"))
     toAddress = schema.Text(title=_t(u"To Address"))
     fromAddress = schema.Text(title=_t(u"From Address"))
-    messageBody = schema.TextLine(title=_t('Message Body'))
+    messageBody = schema.TextLine(title=_t(u'Message Body'))
     
     # SMTP fields
-    smtpHost = schema.Text(title=_t('SMTP Host'), group=_t('SMTP'))
-    smtpPort = schema.Int(title=_t('SMTP Port'), group=_t('SMTP'))
-    smtpUsername = schema.Text(title=_t('SMTP Username'), group=_t('SMTP'))
-    smtpPassword = schema.Password(title=_t('SMTP Password'), group=_t('SMTP'))
-    smtpAuth = schema.Choice(title=_t('Transport Security'),
+    smtpHost = schema.Text(title=_t(u'SMTP Host'), group=_t(u'SMTP'))
+    smtpPort = schema.Int(title=_t(u'SMTP Port'), group=_t(u'SMTP'))
+    smtpUsername = schema.Text(title=_t(u'SMTP Username'), group=_t(u'SMTP'))
+    smtpPassword = schema.Password(title=_t(u'SMTP Password'), group=_t(u'SMTP'))
+    smtpAuth = schema.Choice(title=_t(u'Transport Security'),
                            vocabulary="transportSecurity",
-                           group=_t('SMTP'))
+                           group=_t(u'SMTP'))
 
     # POP fields
-    popHost = schema.Text(title=_t('POP Host'), group=_t('POP'))
-    popPort = schema.Int(title=_t('POP Port'), group=_t('POP'))
-    popUsername = schema.Text(title=_t('POP Username'), group=_t('POP'))
-    popPassword = schema.Password(title=_t('POP Password'), group=_t('POP'))
-    popAuth = schema.Choice(title=_t('Transport Security'),
+    popHost = schema.Text(title=_t(u'POP Host'), group=_t(u'POP'))
+    popPort = schema.Int(title=_t(u'POP Port'), group=_t(u'POP'))
+    popUsername = schema.Text(title=_t(u'POP Username'), group=_t(u'POP'))
+    popPassword = schema.Password(title=_t(u'POP Password'), group=_t(u'POP'))
+    popAuth = schema.Choice(title=_t(u'Transport Security'),
                           vocabulary="transportSecurity",
-                          group=_t('POP'))
-    popAllowInsecureLogin = schema.Bool(title=_t('Allow Insecure Logins?'), group=_t('POP'))
+                          group=_t(u'POP'))
+    popAllowInsecureLogin = schema.Bool(title=_t(u'Allow Insecure Logins?'), group=_t(u'POP'))
 
     
