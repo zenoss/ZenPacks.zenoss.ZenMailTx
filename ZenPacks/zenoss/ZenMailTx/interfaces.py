@@ -21,7 +21,7 @@ class IMailTxDataSourceInfo(IRRDDataSourceInfo):
     eventKey = schema.Text(title=_t(u"Event Key"))
     toAddress = schema.Text(title=_t(u"To Address"))
     fromAddress = schema.Text(title=_t(u"From Address"))
-    messageBody = schema.TextLine(title=_t(u'Message Body'))
+    messageBody = schema.TextLine(title=_t(u'Message Body'), xtype="twocolumntextarea")
     
     # SMTP fields
     smtpHost = schema.Text(title=_t(u'SMTP Host'), group=_t(u'SMTP'))
