@@ -17,319 +17,354 @@ to a device.
 
 import os
 import time
-import traceback
-from sets import Set
+import logging
 
-import Mail
+
+from twisted.internet import defer, error
+from twisted.mail.pop3 import ServerErrorResponse
+from twisted.mail.smtp import AUTHDeclinedError
 
 import Globals
-import ZenPacks.zenoss.ZenMailTx as ZenMailTx
-from Products.ZenRRD.RRDDaemon import RRDDaemon
-from Products.ZenRRD.RRDUtil import RRDUtil
-from Products.ZenUtils.Driver import drive
-from Products.ZenRRD.Thresholds import Thresholds
+import zope.interface
+
+from  ZenPacks.zenoss.ZenMailTx.Mail import sendMessage, getMessage
+
 from Products.ZenModel.RRDDataPoint import SEPARATOR
 from Products.ZenEvents import Event
 
-from twisted.python import failure
-from twisted.internet import defer, reactor, error
-from twisted.mail.pop3 import ServerErrorResponse
-from twisted.mail.smtp import AUTHDeclinedError, SMTPClientError
+from Products.ZenCollector.daemon import CollectorDaemon
+from Products.ZenCollector.interfaces import ICollectorPreferences,\
+                                             IDataService,\
+                                             IEventService,\
+                                             IScheduledTask
+from Products.ZenCollector.tasks import SimpleTaskFactory,\
+                                        SubConfigurationTaskSplitter,\
+                                        TaskStates,\
+                                        BaseTask
 
 # do not delete this: it is needed for pb/jelly
-from ZenPacks.zenoss.ZenMailTx.ConfigService import Config
+from Products.ZenUtils.Utils import unused
+from ZenPacks.zenoss.ZenMailTx.MailTxConfigService import Config
+unused(Config)
+
+COLLECTOR_NAME = "zenmailtx"
+log = logging.getLogger("zen.%s" % COLLECTOR_NAME)
+
+MAX_BACK_OFF_MINUTES = 20
 
 mailEventClass = '/Status'
 
-try:
-    sorted
-except NameError:
-    def sorted(seq, comp=cmp):
-        result = list(seq)
-        result.sort(comp)
-        return result
 
-DEFAULT_HEARTBEAT_TIME = 500
-
-Base = RRDDaemon
-class zenmailtx(Base):
-    initialServices = Base.initialServices + [
-        'ZenPacks.zenoss.ZenMailTx.ConfigService'
-        ]
-
+class MailTxCollectionPreferences(object):
+    zope.interface.implements(ICollectorPreferences)
 
     def __init__(self):
-        Base.__init__(self, 'zenmailtx')
-        self.firstRun = defer.Deferred()
-        self.config = []
-        self.thresholds = Thresholds()
+        """
+        Constructs a new preferences instance and
+        provides default values for needed attributes.
+        """
+        self.collectorName = COLLECTOR_NAME
+        self.defaultRRDCreateCommand = None
+        self.configCycleInterval = 20 # minutes
+        self.cycleInterval = 5 * 60 # seconds
+
+        # The configurationService attribute is the fully qualified class-name
+        # of our configuration service that runs within ZenHub
+        self.configurationService = 'ZenPacks.zenoss.ZenMailTx.MailTxConfigService'
+
+        # Provide a reasonable default for the max number of tasks
+        self.maxTasks = 50
+
+        # Will be filled in based on buildOptions
+        self.options = None
+
+    def buildOptions(self, parser):
+        parser.add_option('--pollingcycle',
+                          dest='pollingcycle',
+                          default=5,
+                          help="Time between POP polls")
+        parser.add_option('--maxbackoffminutes',
+                          dest='maxbackoffminutes',
+                          default=MAX_BACK_OFF_MINUTES,
+                          type='int',
+                          help="When a device fails to respond, increase the time to" \
+                               " check on the device until this limit.")
+
+    def postStartup(self):
+        pass
 
 
-    def remote_deleteDevice(self, doomed):
-        self.log.debug("zenhub requested us to delete"
-                       " device %s -- ignoring" % doomed)
+class MailTxTaskSplitter(SubConfigurationTaskSplitter):
+    subconfigName = 'datasources'
+    def makeConfigKey(self, config, subconfig):
+        return (config.id, subconfig.cycleTime,
+                subconfig.smtpHost, subconfig.toAddress,
+                subconfig.popHost, subconfig.popUsername)
 
 
-    def remote_updateDeviceConfig(self, config):
-        self.log.debug("Configuration device update from zenhub")
-        self.updateConfig(config)
+class MailTxCollectionTask(BaseTask):
+    """
+    A task that performs periodic performance collection for devices providing
+    data via SNMP agents.
+    """
+    zope.interface.implements(IScheduledTask)
 
+    STATE_CONNECTING = 'CONNECTING'
+    STATE_MAILING = 'MAILING'
+    STATE_RECEIVE_POLLING = 'RECEIVE_POLLING'
+    STATE_STORE_PERF = 'STORE_PERF_DATA'
+    STATE_SEND_STATUS = 'SEND_STATUS_EVENT'
 
-    def updateConfig(self, newconfig):
-        if isinstance(newconfig, failure.Failure):
-            self.log.error("Received configuration failure (%s) from zenhub" % (
-                           str(newconfig)))
-            return
-        self.log.debug("Received %d configuration updates from zenhub" % (
-                       len(newconfig)))
-        orig = {}
-        for obj in self.config:
-            orig[obj.key()] = obj
+    def __init__(self,
+                 taskName,
+                 deviceId,
+                 scheduleIntervalSeconds,
+                 taskConfig):
+        """
+        @param deviceId: the Zenoss deviceId to watch
+        @type deviceId: string
+        @param taskName: the unique identifier for this task
+        @type taskName: string
+        @param scheduleIntervalSeconds: the interval at which this task will be
+               collected
+        @type scheduleIntervalSeconds: int
+        @param taskConfig: the configuration for this task
+        """
+        super(MailTxCollectionTask, self).__init__()
+        self.name = taskName
+        self.configId = deviceId
+        self.state = TaskStates.STATE_IDLE
 
-        for obj in newconfig:
-            deviceName = obj.key()[0]
-            if hasattr(self.options, 'device') and \
-               self.options.device != '' and \
-               self.options.device != deviceName:
-                self.log.debug("Skipping update for %s as we're" \
-                               " only looking for %s updates" % (
-                               deviceName, self.options.device))
-                continue
+        # The taskConfig corresponds to a DeviceProxy
+        self._datasources = taskConfig.datasources
+        self._cfg = self._datasources[0]
+        self._devId = deviceId
+        self.interval = scheduleIntervalSeconds
 
-            self.log.debug("Configuration object for %s/%s found" % obj.key())
-            old = orig.get(obj.key(), None)
-            if old is None:
-                obj.ignoreIds = Set()
-                self.config.append(obj)
-            else:
-                old.update(obj)
-            self.thresholds.updateList(obj.thresholds)
+        self._dataService = zope.component.queryUtility(IDataService)
+        self._eventService = zope.component.queryUtility(IEventService)
 
+        self._preferences = zope.component.queryUtility(ICollectorPreferences,
+                                                        COLLECTOR_NAME)
 
-    def handleSmtpError(self, cfg, ex):
-        cfg.msgid = None
-        dsdev, ds = cfg.key()
-        msg = str(ex)
-        if isinstance(ex, error.ConnectionRefusedError):
+        self._maxbackoffseconds = self._preferences.options.maxbackoffminutes * 60
+
+        self._lastErrorMsg = ''
+
+    def _failure(self, reason):
+        """
+        Twisted errBack to log the exception for a single device.
+
+        @parameter reason: explanation of the failure
+        @type reason: Twisted error instance
+        """
+        # Decode the exception
+        if isinstance(reason.value, error.TimeoutError):
+            # Indicate that we've handled the error by
+            # not returning a result
+            reason = None
+
+        else:
+            msg = reason.getErrorMessage()
+            if not msg: # Sometimes we get blank error messages
+                msg = reason.__class__
+            msg = '%s %s' % (self._devId, msg)
+
+            # Leave 'reason' alone to generate a traceback
+
+        if self._lastErrorMsg != msg:
+            self._lastErrorMsg = msg
+            if msg:
+                log.error(msg)
+
+        self._eventService.sendEvent({},
+                                     device=self._devId,
+                                     component='zenmailtx',
+                                     summary=msg,
+                                     severity=Event.Error)
+
+        self._delayNextCheck()
+        return reason
+
+    def cleanup(self):
+        pass
+
+    def doTask(self):
+        """
+        Contact to one device and return a deferred which gathers data from
+        the device.
+
+        @return: A task to scan the OIDs on a device.
+        @rtype: Twisted deferred object
+        """
+        # See if we need to connect first before doing any collection
+        d = defer.maybeDeferred(self._sendMessage)
+        d.addErrback(self._handleSmtpError)
+        d.addCallback(self._getMessage)
+        d.addErrback(self._handlePopError)
+        d.addCallback(self._storeResults)
+        d.addCallback(self._updateStatus)
+        d.addErrback(self._failure)
+
+        # Wait until the Deferred actually completes
+        return d
+
+    def _sendMessage(self):
+        self.state = MailTxCollectionTask.STATE_MAILING
+        self._cfg.msgid = None
+        self._cfg.sent = time.time()
+        log.debug("Sending message to %s via %s",
+                  self._cfg.toAddress, self._cfg.smtpHost)
+        d = sendMessage(self._cfg)
+        endSend = time.time()
+        self.sendTime = endSend - self._cfg.sent
+        return d
+
+    def _handleSmtpError(self, result):
+        self._cfg.msgid = None
+        dsdev, ds = self._cfg.key()
+        failure = result.value
+        msg = str(failure)
+        if isinstance(failure, error.ConnectionRefusedError):
             summary = "Connection refused for %s/%s SMTP server %s" % (
-                      dsdev, ds, cfg.smtpHost)
+                      dsdev, ds, self._cfg.smtpHost)
 
-        elif isinstance(ex, error.TimeoutError):
+        elif isinstance(failure, error.TimeoutError):
             summary = "Timed out while sending message for %s/%s" % (
                       dsdev, ds)
 
-        elif isinstance(ex, error.DNSLookupError):
+        elif isinstance(failure, error.DNSLookupError):
             summary = "Unable to resolve SMTP server %s for %s/%s" % (
-                      cfg.smtpHost, dsdev, ds)
+                      self._cfg.smtpHost, dsdev, ds)
 
-        elif isinstance(ex, AUTHDeclinedError):
+        elif isinstance(failure, AUTHDeclinedError):
             summary = "Authentication declined for SMTP server %s for %s/%s" % (
-                       cfg.smtpHost, dsdev, ds)
+                       self._cfg.smtpHost, dsdev, ds)
 
-        elif isinstance(ex, ServerErrorResponse):
+        elif isinstance(failure, ServerErrorResponse):
             summary = "Received error '%s' while sending message for %s/%s" % (
-                       ex, dsdev, ds)
+                       failure, dsdev, ds)
         else:
             summary = "Unknown exception in zenmailtx during SMTP transaction"
-            msg = '%s' % traceback.format_exc()
+            msg = result.getTraceback()
 
-        self.log.error(msg)
-        errorEvent = dict( device=cfg.device, component='zenmailtx',
-            dedupid='%s|%s|%s|%s' % (dsdev, ds, cfg.smtpHost, cfg.popHost),
+        if self._lastErrorMsg != msg:
+            self._lastErrorMsg = msg
+            if msg:
+                log.error(msg)
+
+        errorEvent = dict( device=self._cfg.device, component='zenmailtx',
+            dedupid='%s|%s|%s|%s' % (dsdev, ds, self._cfg.smtpHost, self._cfg.popHost),
             severity=Event.Error, summary=summary, message=msg,
             eventGroup="mail", dataSource=ds, eventClass=mailEventClass,
-            smtpHost=cfg.smtpHost, smtpUsername=cfg.smtpUsername,
-            fromAddress=cfg.fromAddress, toAddress=cfg.toAddress,
-            smtpAuth=cfg.smtpAuth,
+            smtpHost=self._cfg.smtpHost, smtpUsername=self._cfg.smtpUsername,
+            fromAddress=self._cfg.fromAddress, toAddress=self._cfg.toAddress,
+            smtpAuth=self._cfg.smtpAuth,
         )
-        self.sendEvent(errorEvent)
+        self._eventService.sendEvent(errorEvent)
+        self._delayNextCheck()
 
+    def _getMessage(self, result):
+        self.state = MailTxCollectionTask.STATE_RECEIVE_POLLING
+        log.debug("Getting message from %s %s",
+                  self._cfg.popHost, self._cfg.popUsername)
 
-    def handlePopError(self, cfg, ex):
-        cfg.msgid = None
-        dsdev, ds = cfg.key()
-        msg = str(ex)
-        if isinstance(ex, error.ConnectionRefusedError):
+        self._cfg.ignoreIds = set()
+        startFetch = time.time()
+        d = getMessage(self._cfg, self._preferences.options.pollingcycle)
+        self.fetchTime = time.time() - startFetch
+        log.debug("Fetch time from %s: %.1fs",
+                  self._cfg.popHost, self.fetchTime)
+        return d
+
+    def _handlePopError(self, result):
+        self._cfg.msgid = None
+        dsdev, ds = self._cfg.key()
+        failure = result.value
+        msg = str(failure)
+        if isinstance(failure, error.ConnectionRefusedError):
             summary = "Connection refused for %s/%s POP server %s" % (
-                      dsdev, ds, cfg.popHost)
+                      dsdev, ds, self._cfg.popHost)
 
-        elif isinstance(ex, error.TimeoutError):
+        elif isinstance(failure, error.TimeoutError):
             summary = "Timed out while receiving message for %s/%s" % (
                       dsdev, ds)
 
-        elif isinstance(ex, error.DNSLookupError):
+        elif isinstance(failure, error.DNSLookupError):
             summary = "Unable to resolve POP server %s for %s/%s" % (
-                      cfg.popHost, dsdev, ds)
+                      self._cfg.popHost, dsdev, ds)
 
-        elif isinstance(ex, ServerErrorResponse):
+        elif isinstance(failure, ServerErrorResponse):
             summary = "Received error '%s' while receiving message for %s/%s" % (
-                       ex, dsdev, ds)
+                       failure, dsdev, ds)
 
         else:
             summary = "Unknown exception in zenmailtx during POP transaction"
-            msg = traceback.format_exc()
+            msg = result.getTraceback()
 
-        self.log.error(msg)
-        errorEvent = dict( device=cfg.device, component='zenmailtx',
-            dedupid='%s|%s|%s|%s' % (dsdev, ds, cfg.smtpHost, cfg.popHost),
+        if self._lastErrorMsg != msg:
+            self._lastErrorMsg = msg
+            if msg:
+                log.error(msg)
+
+        errorEvent = dict( device=self._cfg.device, component='zenmailtx',
+            dedupid='%s|%s|%s|%s' % (dsdev, ds, self._cfg.smtpHost, self._cfg.popHost),
             severity=Event.Error, summary=summary, message=msg,
             eventGroup="mail", dataSource=ds, eventClass=mailEventClass,
-            popHost=cfg.popHost, popUsername=cfg.popUsername,
-            popAllowInsecureLogin=cfg.popAllowInsecureLogin,
-            popAuth=cfg.popAuth,
+            popHost=self._cfg.popHost, popUsername=self._cfg.popUsername,
+            popAllowInsecureLogin=self._cfg.popAllowInsecureLogin,
+            popAuth=self._cfg.popAuth,
         )
-        self.sendEvent(errorEvent)
+        self._eventService.sendEvent(errorEvent)
+        self._delayNextCheck()
 
+    def _storeResults(self, result):
+        """
+        Store the datapoint results asked for by the RRD template.
+        """
+        self.state = MailTxCollectionTask.STATE_STORE_PERF
 
-    def processSchedule(self, result = None):
-        if isinstance(result, failure.Failure):
-            if not isinstance(result.value, error.TimeoutError):
-                self.log.error(str(result.value))
-
-        def compare(a, b):
-            return cmp(a.nextRun(), b.nextRun())
-
-        schedule = sorted(self.config, compare)
-        self.log.info("Scheduling %d runs" % len(schedule))
-        if len([s for s in schedule if not s.completedOneAttempt()]) == 0:
-            # everything has executed at least once: tell someone
-            if not self.firstRun.called:
-                self.firstRun.callback(None)
-
-        outstanding = len([c for c in schedule if c.hasMessageOutstanding()])
-        now = time.time()
-        for cfg in schedule:
-            if outstanding >= self.options.parallel:
-                break
-            if cfg.nextRun() <= now:
-                outstanding += 1
-                def inner(driver):
-                    try:
-                        cfg.sent = time.time()
-                        self.log.debug("Sending message to %s", cfg.device)
-                        yield Mail.SendMessage(cfg)
-                        driver.next()
-                        endSend = time.time()
-
-                    except (SystemExit, KeyboardInterrupt):
-                        raise
-                    except Exception, ex:
-                        self.handleSmtpError(cfg, ex)
-                        raise
-
-                    try:
-                        self.log.debug("Getting message from %s", cfg.popHost)
-                        yield Mail.GetMessage(cfg, self.options.pollingcycle)
-                        driver.next()
-                    except (SystemExit, KeyboardInterrupt):
-                        raise
-                    except Exception, ex:
-                        self.handlePopError(cfg, ex)
-                        raise
-
-                    try:
-                        endFetch = time.time()
-                        fetchTime = endFetch - endSend
-                        self.log.debug("Total trip time to/from %s: %.1fs",
-                                       cfg.device, endFetch - cfg.sent)
-                        self.postResults(cfg,
-                                         endFetch - cfg.sent,
-                                         endSend - cfg.sent,
-                                         endFetch - endSend)
-                        cfg.msgid = None
-                    except Exception, ex:
-                        cfg.msgid = None
-                        self.log.exception(ex)
-                        dsdev, ds = cfg.key()
-                        self.sendEvent(dict(
-                          device=cfg.device, component='zenmailtx', severity=Event.Error,
-                          dedupid='%s|%s|%s|%s' % (dsdev, ds, cfg.smtpHost, cfg.popHost),
-                          summary="Unknown exception in zenmailtx while writing results",
-                          message=traceback.format_exc(),
-                          eventGroup="mail", dataSource=ds, eventClass=mailEventClass,
-                        ))
-                        raise
-
-                d = drive(inner)
-                d.addBoth(self.processSchedule)
-
-        if schedule:
-            earliest = schedule[0].nextRun()
-            if earliest > now:
-                reactor.callLater(earliest - now, self.processSchedule)
-
-
-    def postResults(self, cfg, totalTime, sendTime, fetchTime):
-        msg = "Device %s cycle time %0.2fs (sent %0.2fs, fetch %0.2fs)" % (
-                      cfg.device, totalTime, sendTime, fetchTime)
-        self.log.info(msg)
+        self.totalTime = time.time() - self._cfg.sent
         for name in ('totalTime', 'sendTime', 'fetchTime'):
-            dpName = '%s%c%s' % (cfg.name, SEPARATOR, name)
-            rrdConfig = cfg.rrdConfig[dpName]
-            path = os.path.join('Devices', cfg.device, dpName)
-            value = self.rrd.save(path, locals()[name], 'GAUGE',
-                                  rrdConfig.command, cfg.cycleTime,
-                                  rrdConfig.min, rrdConfig.max)
+            dpName = '%s%c%s' % (self._cfg.name, SEPARATOR, name)
+            rrdConfig = self._cfg.rrdConfig[dpName]
+            path = os.path.join('Devices', self._cfg.device, dpName)
+            value = getattr(self, name, None)
+            self._dataService.writeRRD(path, value, 'GAUGE',
+                                       rrdCommand=rrdConfig.command,
+                                       min=rrdConfig.min, max=rrdConfig.max)
 
-            for evt in self.thresholds.check(path, time.time(), value):
-                self.sendThresholdEvent(**evt)
+        return result
 
-        dsdev, ds = cfg.key()
-        self.sendEvent(dict(
-            device=cfg.device, component='zenmailtx', severity=Event.Clear,
-            dedupid='%s|%s|%s|%s' % (dsdev, ds, cfg.smtpHost, cfg.popHost),
+    def _updateStatus(self, result):
+        self.state = MailTxCollectionTask.STATE_SEND_STATUS
+        msg = "Device %s cycle time %0.2fs (sent %0.2fs, fetch %0.2fs)" % (
+                      self._cfg.device, self.totalTime, self.sendTime, self.fetchTime)
+        dsdev, ds = self._cfg.key()
+        self._eventService.sendEvent(dict(
+            device=self._cfg.device, component='zenmailtx', severity=Event.Clear,
+            dedupid='%s|%s|%s|%s' % (dsdev, ds, self._cfg.smtpHost, self._cfg.popHost),
             summary="Successfully completed transaction",
             message=msg,
             eventGroup="mail", dataSource=ds, eventClass=mailEventClass,
         ))
+        return msg
 
+    def displayStatistics(self):
+        """
+        Called by the collector framework scheduler, and allows us to
+        see how each task is doing.
+        """
+        display = self.name
+        if self._lastErrorMsg:
+            display += "%s\n" % self._lastErrorMsg
+        return display
 
-    def heartbeat(self, *unused):
-        Base.heartbeat(self)
-        reactor.callLater(self.heartbeatTimeout / 3, self.heartbeat)
-
-
-    def connected(self):
-        self.log.debug("Gathering information from zenhub")
-        Base.heartbeat(self)
-        def inner(driver):
-            try:
-                now = time.time()
-                self.log.info("Fetching default RRDCreateCommand")
-                yield self.model().callRemote('getDefaultRRDCreateCommand')
-                createCommand = driver.next()
-                self.rrd = RRDUtil(createCommand, DEFAULT_HEARTBEAT_TIME)
-                self.log.info("Getting Threshold Classes")
-                yield self.model().callRemote('getThresholdClasses')
-                self.remote_updateThresholdClasses(driver.next())
-                self.log.info("Retrieving configuration from zenhub...")
-                yield self.model().callRemote('getConfig')
-                self.updateConfig(driver.next())
-                self.log.info("Starting mail tests")
-                self.processSchedule()
-                yield self.firstRun
-                driver.next()
-                self.log.info("Processed %d mail round-trips in %0.2f seconds",
-                              len(self.config),
-                              time.time() - now)
-            except Exception, ex:
-                self.log.exception(ex)
-                raise
-        d = drive(inner)
-        d.addCallbacks(self.heartbeat, self.errorStop)
-
-
-    def buildOptions(self):
-        Base.buildOptions(self)
-        self.parser.add_option('--parallel',
-                               dest='parallel',
-                               default=100,
-                               help="Maximum number of outstanding checks")
-        self.parser.add_option('--pollingcycle',
-                               dest='pollingcycle',
-                               default=5,
-                               help="Time between POP polls")
 
 if __name__ == '__main__':
-    zmt = zenmailtx()
-    zmt.run()
+    myPreferences = MailTxCollectionPreferences()
+    myTaskFactory = SimpleTaskFactory(MailTxCollectionTask)
+    myTaskSplitter = MailTxTaskSplitter(myTaskFactory)
+    daemon = CollectorDaemon(myPreferences, myTaskSplitter)
+    daemon.run()
+

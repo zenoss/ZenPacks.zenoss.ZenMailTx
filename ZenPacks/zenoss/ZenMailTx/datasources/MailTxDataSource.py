@@ -188,7 +188,7 @@ class MailTxDataSource(ZenPackPersistence, Base):
         self.testDataSourceAgainstDevice(testDevice, REQUEST, write, errorLog)
 
     def doMailTx(self, device, write):
-        ''' Execute the given twill commands
+        ''' Test the MAILTX data source
         '''
         import ZenPacks.zenoss.ZenMailTx
         # run the command in a separate process

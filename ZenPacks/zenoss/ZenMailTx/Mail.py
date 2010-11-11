@@ -5,12 +5,15 @@
 ######################################################################
 
 import time
-from sets import Set
 from StringIO import StringIO
 from email import Message, Utils
 
+import logging
+log = logging.getLogger('zen.MailTx.Mail')
+
 # include our OpenSSL libs in the path
-import os, sys
+import os
+import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'lib'))
 
 ssl = None
@@ -21,7 +24,6 @@ except ImportError:
     warnings.warn('OpenSSL Python bindings are missing')
 
 
-import traceback
 
 import Globals
 from twisted.internet import reactor, defer
@@ -36,15 +38,13 @@ from twisted.mail.pop3 import AdvancedPOP3Client, ServerErrorResponse
 
 from Products.ZenUtils.Driver import drive
 
-import logging
-log = logging.getLogger('zen.MailTx.Mail')
 
 def timeout(secs):
     d = defer.Deferred()
     reactor.callLater(secs, d.callback, None)
     return d
 
-def SendMessage(config):
+def sendMessage(config):
     # Make a message
     msg = Message.Message()
     msgid = Utils.make_msgid()
@@ -58,8 +58,6 @@ def SendMessage(config):
     msg.set_payload(config.messageBody)
     log.debug("Message id %s's length is %s bytes" % (
               msgid, len(msg.as_string())))
-    log.debug("Message id %s content:\n%s" % (
-              msgid, msg.as_string()))
     msgIO = StringIO(msg.as_string())
     result = defer.Deferred()
 
@@ -119,19 +117,18 @@ def fetchOnce(config, lines):
             def inner(driver):
                 try:
                     self.allowInsecureLogin = config.popAllowInsecureLogin
-                    log.debug('Login credentials: %s/%s' % (
-                              config.popUsername, '*' * len(config.popPassword)))
                     yield self.login(config.popUsername, config.popPassword)
                     msg = driver.next()
                     if msg:
-                        log.debug('Login message: %s' % msg)
+                        log.debug('Login message: %s', msg)
                     else:
                         log.debug('No message from server!')
 
                     yield self.listUID()
-                    log.debug('Found message uids on POP server %r', driver.next())
+                    #log.debug('Found message uids on POP server %r', driver.next())
+                    #driver.next())
                     log.debug('Scanning for messages...')
-                    junk = Set()
+                    junk = set()
                     for i, uid in enumerate(driver.next()):
                         # skip any messages we've scanned before
                         if uid is None or uid in config.ignoreIds:
@@ -202,7 +199,7 @@ def fetchOnce(config, lines):
     return result
 
 
-def GetMessage(config, pollSeconds, lines=50):
+def getMessage(config, pollSeconds, lines=50):
     "Poll a pop account for the message that goes with this config"
     if config.msgid is None:
         return defer.fail(ValueError("No outstanding message for %s:%s" % (
@@ -220,7 +217,7 @@ def GetMessage(config, pollSeconds, lines=50):
                     yield defer.succeed(driver.next())
                     config.msgid = None
                     break
-            except ConnectionLost, ex:
+            except ConnectionLost:
                 pass
             remaining = end - time.time()
             if remaining < 0:
@@ -229,48 +226,6 @@ def GetMessage(config, pollSeconds, lines=50):
             driver.next()
     return drive(poll)
 
-def test():
-    def go(driver):
-        class Object: pass
-        config = Object()
-        config.sent = time.time()
-        config.toAddress = 'ecn@swcomplete.com'
-        config.fromAddress = 'eric.newton@gmail.com'
-        config.messageBody = "This is the body of this message\n\n-Eric\n"
-        config.smtpUsername = 'eric.newton'
-        config.smtpPassword = sys.argv[1]
-        config.smtpHost = 'smtp.gmail.com'
-        config.smtpPort = None
-        config.smtpAuth = 'SSL'
-        config.device = 'zenoss'
-        config.name = 'MailTx'
-        config.timeout = 10
-        config.ignoreIds = Set()
-        now = time.time()
-        yield SendMessage(config)
-        try:
-            driver.next()
-        except Exception, ex:
-            if reactor.running:
-                reactor.stop()
-            raise ex
-
-        config.popUsername = 'ecn@zenoss.com'
-        config.popPassword = config.smtpPassword
-        config.popHost = 'mail.zenoss.com'
-        config.popPort = None
-        config.popAuth = None
-        yield GetMessage(config, 5.0)
-        driver.next()
-        print time.time() - now
-
-    def printError(result):
-        log.error('Error: %s', result)
-    d = drive(go)
-    d.addErrback(printError)
-    d.addBoth(lambda x: reactor.stop())
-    reactor.run()
-
 def error(why):
     sys.stderr.write("Error: %s" % (why,))
 
@@ -278,32 +233,40 @@ def stop(ignored):
     if reactor.running:
         reactor.stop()
 
+# Note: The following is used by the datasource to test
 def testDevice(device, datasource):
     log.info("Testing mail transaction against device %s" % (device,))
     def go(driver):
         from Products.ZenUtils.ZenScriptBase import ZenScriptBase
-        from ZenPacks.zenoss.ZenMailTx.ConfigService import ConfigService
+        from ZenPacks.zenoss.ZenMailTx.MailTxConfigService import MailTxConfigService
+       
         zendmd = ZenScriptBase(noopts=True, connect=True)
         dmd = zendmd.dmd
         d = dmd.Devices.findDevice(device)
         if not d:
             sys.stderr.write("Unable to find device %s\n" % device)
             sys.exit(1)
-        s = ConfigService(dmd, d.perfServer().id)
-        if not s:
+        log.setLevel(logging.DEBUG)
+        service = MailTxConfigService(dmd, d.perfServer().id)
+        if not service:
             sys.stderr.write("Unable to find configuration for %s" % device)
-        config = s.getDeviceConfig(d)
+        proxy = service.remote_getDeviceConfigs( [device] )
+        if proxy:
+            proxy = proxy[0]
+        else:
+            raise ValueError("Unable to find a valid MailTx config for device %s" % device)
+        config = proxy.datasources
         if datasource:
-            config = [c for c in config if c.name == datasource]
+            config = [c for c in proxy.datasources if c.name == datasource]
         if not config:
             raise ValueError("Unable to find a MailTx config %s for device %s" %
                              (datasource or '', device))
         config = config[0]
-        config.ignoreIds = Set()
+        config.ignoreIds = set()
         now = time.time()
-        yield SendMessage(config)
+        yield sendMessage(config)
         log.debug("Result of message send: %s", driver.next())
-        yield GetMessage(config, 5.0)
+        yield getMessage(config, 5.0)
         log.debug("Result of message fetch: %s", driver.next())
         log.info("Message delivered in %.2f seconds" % (time.time() - now))
     d = drive(go)
@@ -328,8 +291,6 @@ if __name__ == '__main__':
     if device:
         name = (names and names[0]) or 'localhost'
         testDevice(device, source)
-    elif names:
-        test()
     else:
         print "Usage: %s -d device"
         sys.exit(1)
