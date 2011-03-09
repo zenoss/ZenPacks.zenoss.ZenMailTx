@@ -16,6 +16,8 @@ from twisted.spread import pb
 
 from Products.ZenCollector.services.config import CollectorConfigService
 from Products.ZenUtils.ZenTales import talesEval
+from Products.Zuul import getFacade
+from zenoss.protocols.protobufs.zep_pb2 import SEVERITY_CRITICAL, SEVERITY_ERROR, SEVERITY_WARNING
 
 Status_Mail = '/App/Email/Loop'
 
@@ -121,8 +123,9 @@ class MailTxConfigService(CollectorConfigService):
 
     def remote_getStatus(self):
         """Return devices with Mail problems."""
-        where = "eventClass = '%s'" % Status_Mail
-        issues = self.zem.getDeviceIssues(where=where, severity=3)
+        zep = getFacade('zep')
+        issues = zep.getDeviceIssues(eventClass=[Status_Mail],
+                                     severity=[SEVERITY_WARNING, SEVERITY_ERROR, SEVERITY_CRITICAL])
         return [d
                 for d, count, total in issues
                 if getattr(self.config.devices, d, None)]
