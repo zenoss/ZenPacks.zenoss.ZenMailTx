@@ -130,7 +130,10 @@ class MailTxCollectionTask(BaseTask):
         @type scheduleIntervalSeconds: int
         @param taskConfig: the configuration for this task
         """
-        super(MailTxCollectionTask, self).__init__()
+        super(MailTxCollectionTask, self).__init__(
+                 taskName, deviceId, 
+                 scheduleIntervalSeconds, taskConfig
+               )
         self.name = taskName
         self.configId = deviceId
         self.state = TaskStates.STATE_IDLE
@@ -204,6 +207,7 @@ class MailTxCollectionTask(BaseTask):
         d.addErrback(self._handlePopError)
         d.addCallback(self._storeResults)
         d.addCallback(self._updateStatus)
+        d.addCallback(self._returnToNormalSchedule)
         d.addErrback(self._failure)
 
         # Wait until the Deferred actually completes
