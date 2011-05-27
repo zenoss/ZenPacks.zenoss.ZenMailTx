@@ -175,18 +175,19 @@ class MailTxCollectionTask(BaseTask):
 
             # Leave 'reason' alone to generate a traceback
 
-        if self._lastErrorMsg != msg:
-            self._lastErrorMsg = msg
-            if msg:
-                log.error(msg)
+        if not self._errorHandled:
+            if self._lastErrorMsg != msg:
+                self._lastErrorMsg = msg
+                if msg:
+                    log.error(msg)
 
-        self._eventService.sendEvent({},
-                                     device=self._devId,
-                                     component='zenmailtx',
-                                     summary=msg,
-                                     severity=Event.Error)
+            self._eventService.sendEvent({},
+                                         device=self._devId,
+                                         component='zenmailtx',
+                                         summary=msg,
+                                         severity=Event.Error)
 
-        self._delayNextCheck()
+            self._delayNextCheck()
         return reason
 
     def cleanup(self):
@@ -201,6 +202,7 @@ class MailTxCollectionTask(BaseTask):
         @rtype: Twisted deferred object
         """
         # See if we need to connect first before doing any collection
+        self._errorHandled = False
         d = defer.maybeDeferred(self._sendMessage)
         d.addErrback(self._handleSmtpError)
         d.addCallback(self._getMessage)
@@ -256,17 +258,18 @@ class MailTxCollectionTask(BaseTask):
             self._lastErrorMsg = msg
             if msg:
                 log.error(msg)
-
         errorEvent = dict( device=self._cfg.device, component='zenmailtx',
             dedupid='%s|%s|%s|%s' % (dsdev, ds, self._cfg.smtpHost, self._cfg.popHost),
-            severity=Event.Error, summary=summary, message=msg,
-            eventGroup="mail", dataSource=ds, eventClass=mailEventClass,
+            severity=self._cfg.severity, summary=summary, message=msg,
+            eventGroup="mail", dataSource=ds, eventClass=self._cfg.eventClass,
             smtpHost=self._cfg.smtpHost, smtpUsername=self._cfg.smtpUsername,
             fromAddress=self._cfg.fromAddress, toAddress=self._cfg.toAddress,
-            smtpAuth=self._cfg.smtpAuth,
+            smtpAuth=self._cfg.smtpAuth, eventKey=self._cfg.eventKey
         )
         self._eventService.sendEvent(errorEvent)
         self._delayNextCheck()
+        self._errorHandled = True
+        return result
 
     def _getMessage(self, result):
         self.state = MailTxCollectionTask.STATE_RECEIVE_POLLING
@@ -282,6 +285,9 @@ class MailTxCollectionTask(BaseTask):
         return d
 
     def _handlePopError(self, result):
+        if self._errorHandled:
+            return result
+
         self._cfg.msgid = None
         dsdev, ds = self._cfg.key()
         failure = result.value
@@ -313,14 +319,16 @@ class MailTxCollectionTask(BaseTask):
 
         errorEvent = dict( device=self._cfg.device, component='zenmailtx',
             dedupid='%s|%s|%s|%s' % (dsdev, ds, self._cfg.smtpHost, self._cfg.popHost),
-            severity=Event.Error, summary=summary, message=msg,
-            eventGroup="mail", dataSource=ds, eventClass=mailEventClass,
+            severity=self._cfg.severity, summary=summary, message=msg,
+            eventGroup="mail", dataSource=ds, eventClass=self._cfg.eventClass,
             popHost=self._cfg.popHost, popUsername=self._cfg.popUsername,
             popAllowInsecureLogin=self._cfg.popAllowInsecureLogin,
-            popAuth=self._cfg.popAuth,
+            popAuth=self._cfg.popAuth, eventKey=self._cfg.eventKey
         )
         self._eventService.sendEvent(errorEvent)
         self._delayNextCheck()
+        self._errorHandled = True
+        return result
 
     def _storeResults(self, result):
         """
@@ -349,8 +357,8 @@ class MailTxCollectionTask(BaseTask):
             device=self._cfg.device, component='zenmailtx', severity=Event.Clear,
             dedupid='%s|%s|%s|%s' % (dsdev, ds, self._cfg.smtpHost, self._cfg.popHost),
             summary="Successfully completed transaction",
-            message=msg,
-            eventGroup="mail", dataSource=ds, eventClass=mailEventClass,
+            message=msg, eventKey=self._cfg.eventKey,
+            eventGroup="mail", dataSource=ds, eventClass=self._cfg.eventClass,
         ))
         return msg
 
