@@ -12,8 +12,6 @@ Part of ZenMailTx zenpack.
 
 from Products.ZenModel.RRDDataSource import RRDDataSource
 from AccessControl import ClassSecurityInfo, Permissions
-from Products.ZenEvents.ZenEventClasses import Status_Web
-from Products.ZenUtils.ZenTales import talesCompile, getEngine
 from Products.ZenModel.ZenPackPersistence import ZenPackPersistence
 from Products.ZenUtils.Utils import executeStreamCommand
 from Products.ZenWidgets import messaging
@@ -73,33 +71,13 @@ class MailTxDataSource(ZenPackPersistence, Base):
     _relations = Base._relations + (
         )
 
-
-    factory_type_information = ( 
-    { 
-        'immediate_view' : 'editMailTxDataSource',
-        'actions'        :
-        ( 
-            { 'id'            : 'edit',
-              'name'          : 'Data Source',
-              'action'        : 'editMailTxDataSource',
-              'permissions'   : ( Permissions.view, ),
-            },
-            { 'id'            : 'testcheckcommand',
-              'name'          : 'Test Now',
-              'action'        : 'testMailTxDataSource',
-              'permissions'   : ( Permissions.view, ),
-              },
-        )
-    },
-    )
-
     security = ClassSecurityInfo()
 
 
     def __init__(self, id, title=None, buildRelations=True):
         Base.__init__(self, id, title, buildRelations)
         #when being copied the relation attributes won't appear till later
-        if getattr(self, 'datapoints', None) is not None:
+        if getattr(self, 'datapoints') is not None:
             dpIds = map(lambda x: x.id, self.datapoints())
             for dp in ('totalTime', 'fetchTime', 'sendTime'):
                 if not dp in dpIds:
@@ -117,13 +95,8 @@ class MailTxDataSource(ZenPackPersistence, Base):
         @param Function write The output method we are using to stream the result of the command
         @parma Function errorLog The output method we are using to report errors
         """
-        header = ''
-        footer = ''
 
         # Render
-        if REQUEST.get('renderTemplate', True):
-            header, footer = self.testMailTxOutput().split('OUTPUT_TOKEN')
-        write(str(header))
         # Determine which device to execute against
         device = None
         if testDevice:
@@ -159,17 +132,16 @@ class MailTxDataSource(ZenPackPersistence, Base):
             write('type: %s  value: %s' % tuple(sys.exc_info()[:2]))
         write('')
         write('DONE in %s seconds' % long(time.time() - start))
-        write(str(footer))
         
     security.declareProtected('Change Device', 'manage_testDataSource')
     def manage_testDataSource(self, testDevice, REQUEST):
-        ''' Test the datasource by executing the command and outputting the
+        """ Test the datasource by executing the command and outputting the
         non-quiet results.
-        '''
+        """
         out = REQUEST.RESPONSE
         def write(lines):
-            ''' Output (maybe partial) result text.
-            '''
+            """ Output (maybe partial) result text.
+            """
             # Looks like firefox renders progressive output more smoothly
             # if each line is stuck into a table row.  
             startLine = '<tr><td class="tablevalues">'
@@ -188,8 +160,8 @@ class MailTxDataSource(ZenPackPersistence, Base):
         self.testDataSourceAgainstDevice(testDevice, REQUEST, write, errorLog)
 
     def doMailTx(self, device, write):
-        ''' Test the MAILTX data source
-        '''
+        """ Test the MAILTX data source
+        """
         import ZenPacks.zenoss.ZenMailTx
         # run the command in a separate process
         cmd = '%s %s/Mail.py -d "%s" -s "%s"' % (

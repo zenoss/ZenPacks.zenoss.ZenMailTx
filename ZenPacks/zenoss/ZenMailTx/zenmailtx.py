@@ -25,7 +25,8 @@ from twisted.mail.pop3 import ServerErrorResponse
 from twisted.mail.smtp import AUTHDeclinedError
 
 import Globals
-import zope.interface
+from zope.interface import implements
+from zope.component import queryUtility
 
 from  ZenPacks.zenoss.ZenMailTx.Mail import sendMessage, getMessage
 
@@ -56,7 +57,7 @@ mailEventClass = '/Status'
 
 
 class MailTxCollectionPreferences(object):
-    zope.interface.implements(ICollectorPreferences)
+    implements(ICollectorPreferences)
 
     def __init__(self):
         """
@@ -107,7 +108,7 @@ class MailTxCollectionTask(BaseTask):
     A task that performs periodic performance collection for devices providing
     data via SNMP agents.
     """
-    zope.interface.implements(IScheduledTask)
+    implements(IScheduledTask)
 
     STATE_CONNECTING = 'CONNECTING'
     STATE_MAILING = 'MAILING'
@@ -144,11 +145,10 @@ class MailTxCollectionTask(BaseTask):
         self._devId = deviceId
         self.interval = scheduleIntervalSeconds
 
-        self._dataService = zope.component.queryUtility(IDataService)
-        self._eventService = zope.component.queryUtility(IEventService)
+        self._dataService = queryUtility(IDataService)
+        self._eventService = queryUtility(IEventService)
 
-        self._preferences = zope.component.queryUtility(ICollectorPreferences,
-                                                        COLLECTOR_NAME)
+        self._preferences = queryUtility(ICollectorPreferences, COLLECTOR_NAME)
 
         self._maxbackoffseconds = self._preferences.options.maxbackoffminutes * 60
 
@@ -166,6 +166,7 @@ class MailTxCollectionTask(BaseTask):
             # Indicate that we've handled the error by
             # not returning a result
             reason = None
+            msg = None
 
         else:
             msg = reason.getErrorMessage()
@@ -341,7 +342,7 @@ class MailTxCollectionTask(BaseTask):
             dpName = '%s%c%s' % (self._cfg.name, SEPARATOR, name)
             rrdConfig = self._cfg.rrdConfig[dpName]
             path = os.path.join('Devices', self._cfg.device, dpName)
-            value = getattr(self, name, None)
+            value = getattr(self, name)
             self._dataService.writeRRD(path, value, 'GAUGE',
                                        rrdCommand=rrdConfig.command,
                                        min=rrdConfig.min, max=rrdConfig.max)

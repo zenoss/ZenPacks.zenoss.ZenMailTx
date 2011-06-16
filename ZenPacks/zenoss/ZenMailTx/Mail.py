@@ -11,10 +11,7 @@ from email import Message, Utils
 import logging
 log = logging.getLogger('zen.MailTx.Mail')
 
-# include our OpenSSL libs in the path
-import os
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'lib'))
 
 ssl = None
 try:
@@ -22,8 +19,6 @@ try:
 except ImportError:
     import warnings
     warnings.warn('OpenSSL Python bindings are missing')
-
-
 
 import Globals
 from twisted.internet import reactor, defer
@@ -70,7 +65,6 @@ def sendMessage(config):
         port = 465
         connect = reactor.connectSSL
         kwargs.update(dict(requireTransportSecurity = False))
-        factory = ssl.ClientContextFactory()
         args = (ssl.ClientContextFactory(), )
     elif ssl and config.smtpAuth == 'TLS':
         pass
@@ -199,7 +193,7 @@ def fetchOnce(config, lines):
     return result
 
 
-def getMessage(config, pollSeconds, lines=50):
+def getMessage(config, pollSeconds, lines=0):
     "Poll a pop account for the message that goes with this config"
     if config.msgid is None:
         return defer.fail(ValueError("No outstanding message for %s:%s" % (

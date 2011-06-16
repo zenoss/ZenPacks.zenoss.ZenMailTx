@@ -9,26 +9,25 @@ from Products.Zuul.utils import ZuulMessageFactory as _t
 
 
 class IMailTxDataSourceInfo(IRRDDataSourceInfo):
+    cycleTime = schema.Int(title=_t(u'Cycle Time (seconds)'))
     timeout = schema.Int(title=_t(u"Timeout (seconds)"))
-    component = schema.Text(title=_t(u"Component"))
-    eventKey = schema.Text(title=_t(u"Event Key"))
-    toAddress = schema.Text(title=_t(u"To Address"))
-    fromAddress = schema.Text(title=_t(u"From Address"))
+    toAddress = schema.TextLine(title=_t(u"To Address"))
+    fromAddress = schema.TextLine(title=_t(u"From Address"))
     messageBody = schema.TextLine(title=_t(u'Message Body'), xtype="twocolumntextarea")
     
     # SMTP fields
-    smtpHost = schema.Text(title=_t(u'SMTP Host'), group=_t(u'SMTP'))
+    smtpHost = schema.TextLine(title=_t(u'SMTP Host'), group=_t(u'SMTP'))
     smtpPort = schema.Int(title=_t(u'SMTP Port'), group=_t(u'SMTP'))
-    smtpUsername = schema.Text(title=_t(u'SMTP Username'), group=_t(u'SMTP'))
+    smtpUsername = schema.TextLine(title=_t(u'SMTP Username'), group=_t(u'SMTP'))
     smtpPassword = schema.Password(title=_t(u'SMTP Password'), group=_t(u'SMTP'))
     smtpAuth = schema.Choice(title=_t(u'Transport Security'),
                            vocabulary="transportSecurity",
                            group=_t(u'SMTP'))
 
     # POP fields
-    popHost = schema.Text(title=_t(u'POP Host'), group=_t(u'POP'))
+    popHost = schema.TextLine(title=_t(u'POP Host'), group=_t(u'POP'))
     popPort = schema.Int(title=_t(u'POP Port'), group=_t(u'POP'))
-    popUsername = schema.Text(title=_t(u'POP Username'), group=_t(u'POP'))
+    popUsername = schema.TextLine(title=_t(u'POP Username'), group=_t(u'POP'))
     popPassword = schema.Password(title=_t(u'POP Password'), group=_t(u'POP'))
     popAuth = schema.Choice(title=_t(u'Transport Security'),
                           vocabulary="transportSecurity",
