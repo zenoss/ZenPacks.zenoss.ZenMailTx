@@ -342,7 +342,7 @@ class MailTxCollectionTask(BaseTask):
             dpName = '%s%c%s' % (self._cfg.name, SEPARATOR, name)
             rrdConfig = self._cfg.rrdConfig[dpName]
             path = os.path.join('Devices', self._cfg.device, dpName)
-            value = getattr(self, name)
+            value = getattr(self, name, None)
             self._dataService.writeRRD(path, value, 'GAUGE',
                                        rrdCommand=rrdConfig.command,
                                        min=rrdConfig.min, max=rrdConfig.max)
