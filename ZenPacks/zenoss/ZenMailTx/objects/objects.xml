@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<objects>
+    <!-- OSProcess definition -->
+    <object id='/zport/dmd/Processes/Zenoss' module='Products.ZenModel.OSProcessOrganizer' class='OSProcessOrganizer'>
+        <tomanycont id='osProcessClasses'>
+            <object id='zenmailtx' module='Products.ZenModel.OSProcessClass' class='OSProcessClass'>
+                <property id='zendoc' type='string'>
+                    Provides monitoring for round-trip email delivery.
+                </property>
+                <property type="string" id="name" mode="w" >
+                    zenmailtx
+                </property>
+                <property type="string" id="regex" mode="w" >
+                    .*zenmailtx.py.*
+                </property>
+                <property type="boolean" id="ignoreParametersWhenModeling" mode="w" >
+                    False
+                </property>
+                <property type="boolean" id="ignoreParameters" mode="w" >
+                    False
+                </property>
+                <property type="text" id="description" mode="w" >
+                    Provides monitoring for round-trip email delivery.
+                </property>
+            </object>
+        </tomanycont>
+    </object>
+</objects>
