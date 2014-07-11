@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE reference
+  PUBLIC "urn:pubid:zenoss.com:doctypes:dita:dtd:reference" "reference.dtd">
+<reference id="d67e9"><title>Events</title><refbody><section><p>There are several situations in which this ZenPack creates events. The <keyword
+          outputclass="property">component</keyword> will be <codeph outputclass="literal"
+          >zenmailtx</codeph>, the <keyword outputclass="property">eventGroup</keyword> will be
+          <codeph outputclass="literal">mail</codeph> and the <keyword outputclass="property"
+          >eventClass</keyword> will be <filepath outputclass="literal">/Status</filepath>. These
+        situations are:</p><ul>
+        <li>
+          <p>The SMTP server name or the POP server name cannot be
+          resolved.</p>
+        </li>
+
+        <li>
+          <p>The SMTP server or the POP server is down or
+          unavailable.</p>
+        </li>
+
+        <li>
+          <p>The timeout (specified on the Data Source tab) is exceeded for
+          the SMTP or POP server.</p>
+        </li>
+
+        <li>
+          <p>Authentication (if specified) with the SMTP or POP server
+          fails.</p>
+        </li>
+
+        <li>
+          <p>A threshold defined for one of the data points in this data
+          source is exceeded. Thresholds are defined in the monitoring
+          template that contains the data source.</p>
+        </li>
+      </ul><p>Once an email has successfully made a trip back and forth, a clear
+      event is created that clears any failure events.</p></section></refbody></reference>

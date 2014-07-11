@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map
+  PUBLIC "urn:pubid:zenoss.com:doctypes:dita:dtd:map" "map.dtd">
+<map>
+   <title>ZenMailTx</title>
+   <topicref href="topics/ZenMailTx.dita">
+      <topicref href="topics/ZenMailTx_ref-Events.dita"/>
+      <topicref href="topics/ZenMailTx_ref-Prerequisites.dita"/>
+      <topicref href="topics/ZenMailTx_task-Enable-Monitoring.dita"/>
+      <topicref href="topics/ZenMailTx_ref-Daemons.dita"/>
+      <topicref href="topics/ZenMailTx_ref-Managing-the-Collector-Daemon.dita"/>
+   </topicref>
+</map>

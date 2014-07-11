@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE reference
+  PUBLIC "urn:pubid:zenoss.com:doctypes:dita:dtd:reference" "reference.dtd">
+<reference id="d67e347">
+      <title>Managing the Collector Daemon</title>
+    <refbody><section><p>The zenmailtx daemon:</p><ul>
+      <li>
+        <p>Sends the test email message via the specified SMTP
+        server</p>
+      </li>
+
+      <li>
+        <p>Retrieves the email message from the specified POP server</p>
+      </li>
+
+      <li>
+        <p>Sends the following information to <ph conkeyref="names/platform"/>:</p>
+
+        <ul>
+          <li>
+            <p>Time taken to send</p>
+          </li>
+
+          <li>
+            <p>Time taken to fetch</p>
+          </li>
+
+          <li>
+            <p>Total time</p>
+          </li>
+        </ul>
+      </li>
+    </ul><p>This daemon appears on the <ph conkeyref="names/platform"/> Daemons page and can be started,
+    stopped and restarted from there.</p></section></refbody></reference>
