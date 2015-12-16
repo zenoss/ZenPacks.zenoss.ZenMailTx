@@ -227,9 +227,9 @@ def getMessage(config, pollSeconds, lines=0):
 
 def error(why):
     if hasattr(why, 'value'):
-        sys.stderr.write("Error %s" % why.value)
+        log.error("Error %s" % why.value)
     else:
-        sys.stderr.write("Error %s" % why)
+        log.error("Error %s" % why)
 
 
 def stop(ignored):
