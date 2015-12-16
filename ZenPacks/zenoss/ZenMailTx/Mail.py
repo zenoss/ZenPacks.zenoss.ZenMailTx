@@ -224,12 +224,18 @@ def getMessage(config, pollSeconds, lines=0):
             driver.next()
     return drive(poll)
 
+
 def error(why):
-    sys.stderr.write("Error: %s" % (why,))
+    if hasattr(why, 'value'):
+        log.error("Error %s" % why.value)
+    else:
+        log.error("Error %s" % why)
+
 
 def stop(ignored):
     if reactor.running:
         reactor.stop()
+
 
 # Note: The following is used by the datasource to test
 def testDevice(device, datasource):
