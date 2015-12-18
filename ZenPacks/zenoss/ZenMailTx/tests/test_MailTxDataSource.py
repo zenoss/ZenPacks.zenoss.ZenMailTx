@@ -31,9 +31,9 @@ class TestMailTxDataSource(BaseTestCase):
         self.ds.getSubDevicesGen = Mock(next=Mock(return_value=None))
         self.ds.testDataSourceAgainstDevice(None, None, write, error)
         self.assertEquals(error.call_count, 1)
-        self.assertEquals(write.call_count, 5)
+        self.assertEquals(write.call_count, 4)
 
         self.ds.device = Mock(return_value=None)
         self.ds.testDataSourceAgainstDevice(None, None, write, error)
         self.assertEquals(error.call_count, 2)
-        self.assertEquals(write.call_count, 5)
+        self.assertEquals(write.call_count, 4)
