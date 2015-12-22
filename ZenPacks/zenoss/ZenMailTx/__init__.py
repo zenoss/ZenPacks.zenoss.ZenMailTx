@@ -22,9 +22,6 @@ def __str__(self):
             res = ["%s %s" % (self.code, self.resp)]
     else:
         res = [self.resp]
-    if self.log:
-        res.append(self.log)
-        res.append('')
     return '\n'.join(res)
 
 # Used in the datasource for pathing
