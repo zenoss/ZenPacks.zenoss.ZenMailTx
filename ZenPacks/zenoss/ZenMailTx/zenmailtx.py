@@ -356,7 +356,13 @@ class MailTxCollectionTask(BaseTask):
                     max=rrdConfig.max,
                     threshEventData={
                         'eventKey': self._cfg.eventKey,
-                        'component'='zenmailtx',
+                        'component': 'zenmailtx',
+                    },
+                    metadata={
+                        'contextKey': path,
+                        'contextId': None,
+                        'deviceId': self._cfg.device,
+                        'contextUUID': None,
                     },
                 )
             except AttributeError: # not a 5.x

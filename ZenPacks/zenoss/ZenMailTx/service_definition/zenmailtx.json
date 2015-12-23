@@ -50,7 +50,7 @@
                 "Interval": 10.0
             },
 			"running": {
-			    "Script": "pgrep -fu zenoss zenmailtxt.py > /dev/null",
+			    "Script": "pgrep -fu zenoss zenmailtx.py > /dev/null",
 			    "Interval": 5.0
 			}
 		},
