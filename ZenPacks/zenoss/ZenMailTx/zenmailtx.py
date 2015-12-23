@@ -348,10 +348,16 @@ class MailTxCollectionTask(BaseTask):
             value = getattr(self, name, None)
             try:
                 path = os.path.join('Devices', self._cfg.device)
-                self._dataService.writeMetric(
-                    path, dpName, value, 'GAUGE', dpName,
+                self._dataService.writeMetricWithMetadata(
+                    dpName,
+                    value,
+                    'GAUGE',
                     min=rrdConfig.min,
                     max=rrdConfig.max,
+                    threshEventData={
+                        'eventKey': self._cfg.eventKey,
+                        'component'='zenmailtx',
+                    },
                 )
             except AttributeError: # not a 5.x
                 path = os.path.join('Devices', self._cfg.device, dpName)
