@@ -6,6 +6,11 @@
            provides=".interfaces.IMailTxDataSourceInfo"
            />
 
+  <adapter factory=".datasources.MailTxPythonDataSource.MailTxPythonDataSourceInfo"
+           for=".datasources.MailTxPythonDataSource.MailTxPythonDataSource"
+           provides=".datasources.MailTxPythonDataSource.IMailTxPythonDataSourceInfo"
+           />
+
   <utility provides="zope.schema.interfaces.IVocabularyFactory"
            component=".info.transportSecurityVocabulary"
            name="transportSecurity"/>
