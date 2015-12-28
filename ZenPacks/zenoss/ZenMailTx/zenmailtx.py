@@ -345,35 +345,11 @@ class MailTxCollectionTask(BaseTask):
         for name in ('totalTime', 'sendTime', 'fetchTime'):
             dpName = '%s%c%s' % (self._cfg.name, SEPARATOR, name)
             rrdConfig = self._cfg.rrdConfig[dpName]
+            path = os.path.join('Devices', self._cfg.device, dpName)
             value = getattr(self, name, None)
-            try:
-                path = os.path.join('Devices', self._cfg.device)
-                self._dataService.writeMetricWithMetadata(
-                    dpName,
-                    value,
-                    'GAUGE',
-                    min=rrdConfig.min,
-                    max=rrdConfig.max,
-                    threshEventData={
-                        'eventKey': self._cfg.eventKey,
-                        'component': 'zenmailtx',
-                    },
-                    metadata={
-                        'contextKey': path,
-                        'contextId': None,
-                        'deviceId': self._cfg.device,
-                        'contextUUID': None,
-                    },
-                )
-            except AttributeError: # not a 5.x
-                path = os.path.join('Devices', self._cfg.device, dpName)
-                self._dataService.writeRRD(
-                    path, value, 'GAUGE',
-                    rrdCommand=rrdConfig.command,
-                    min=rrdConfig.min,
-                    max=rrdConfig.max
-                )
-
+            self._dataService.writeRRD(path, value, 'GAUGE',
+                                       rrdCommand=rrdConfig.command,
+                                       min=rrdConfig.min, max=rrdConfig.max)
 
         return result
 
