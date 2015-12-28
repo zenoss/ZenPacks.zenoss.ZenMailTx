@@ -8,7 +8,7 @@
 ##############################################################################
 
 
-__doc__='''
+'''
 Defines datasource for ZenMailTx round-trip mail testing using Python Collector
 Part of ZenMailTx zenpack.
 '''
@@ -91,8 +91,8 @@ class MailTxPythonDataSource(PythonDataSource):
         super(MailTxPythonDataSource, self).__init__(id, title, buildRelations)
 
         #when being copied the relation attributes won't appear till later
-        if getattr(self, 'datapoints', None) is not None:
-            dpIds = map(lambda x: x.id, self.datapoints())
+        if not hasattr(self, 'datapoints'):
+            dpIds = [x.id for x in self.datapoints()]
             for dp in ('totalTime', 'fetchTime', 'sendTime'):
                 if not dp in dpIds:
                     self.manage_addRRDDataPoint(dp)
@@ -171,11 +171,6 @@ class MailTxPythonDataSourcePlugin(PythonDataSourcePlugin):
         log.debug("Sending message to %s via %s", cfg.toAddress, cfg.smtpHost)
 
         results['values'][None] = {}
-        #     'sendTime': None,
-        #     'fetchTime': None,
-        #     'totalTime': None,
-        # }
-
         try:
             res = yield sendMessage(cfg)
             end_sent = time.time()
@@ -200,8 +195,8 @@ class MailTxPythonDataSourcePlugin(PythonDataSourcePlugin):
     def onResult(self, result, config):
         return result
 
-    @classmethod
-    def params(cls, datasource, context):
+    @staticmethod
+    def params(datasource, context):
         p = {}
         for property in MailTxPythonDataSource._properties:
             attr = property['id']

@@ -11,7 +11,7 @@ from mock import Mock
 
 from Products.ZenTestCase.BaseTestCase import BaseTestCase
 
-from ZenPacks.zenoss.ZenMailTx.datasources.MailTxPythonDataSource import *
+from ZenPacks.zenoss.ZenMailTx.datasources.MailTxPythonDataSource import smtp_error2event, pop_error2event
 
 
 class TestMailTxPythonDataSource(BaseTestCase):
