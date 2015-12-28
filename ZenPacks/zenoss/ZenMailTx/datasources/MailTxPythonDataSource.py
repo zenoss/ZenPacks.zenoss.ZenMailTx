@@ -91,7 +91,7 @@ class MailTxPythonDataSource(PythonDataSource):
         super(MailTxPythonDataSource, self).__init__(id, title, buildRelations)
 
         #when being copied the relation attributes won't appear till later
-        if not hasattr(self, 'datapoints'):
+        if hasattr(self, 'datapoints'):
             dpIds = [x.id for x in self.datapoints()]
             for dp in ('totalTime', 'fetchTime', 'sendTime'):
                 if not dp in dpIds:
