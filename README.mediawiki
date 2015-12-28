@@ -1,0 +1,115 @@
+The <span class="zenpack">ZenPacks.zenoss.ZenMailTx</span> ZenPack allows you to monitor round-trip email delivery.
+
+
+== Events ==
+
+
+There are several situations in which this ZenPack creates events. The <span class="keyword property">component</span> will be <samp class="ph codeph literal">zenmailtx</samp>, the <span class="keyword property">eventGroup</span> will be <samp class="ph codeph literal">mail</samp> and the <span class="keyword property">eventClass</span> will be <span class="ph filepath literal">/Status</span>. These situations are:
+
+* The SMTP server name or the POP server name cannot be resolved.
+* The SMTP server or the POP server is down or unavailable.
+* The timeout (specified on the Data Source tab) is exceeded for the SMTP or POP server.
+* Authentication (if specified) with the SMTP or POP server fails.
+* A threshold defined for one of the data points in this data source is exceeded. Thresholds are defined in the monitoring template that contains the data source.
+
+Once an email has successfully made a trip back and forth, a clear event is created that clears any failure events.
+
+
+== Prerequisites ==
+
+
+{| class="wikitable"
+!width="50%"|Prerequisite
+!width="50%"|Restriction
+|-
+|Product
+|<span class="ph">Zenoss platform</span> 4.x, Zenoss 2.2 or higher
+|-
+|Required ZenPacks
+|ZenPacks.zenoss.ZenMailTx
+|}
+
+
+== Enable Monitoring ==
+
+
+<ol>
+<li>Click the device in the device list.
+</li>
+<li>From the left panel, select the Device template under Monitoring Templates.
+</li>
+<li>Select Add Local Template from the Action menu.
+</li>
+<li>Enter an identifier for the template (such as ZenMailTx), and then click '''Submit''' to create the template.
+</li>
+<li>Click the newly created ZenMailTx template.
+</li>
+<li>In the Data Sources area, click Add to add a data source.
+</li>
+<li>Enter a name for the data source (MailTx), select PYMAILTX as the type, and then click '''Submit'''.
+</li>
+<li>Change options as needed.
+
+
+{| class="wikitable"
+|+ <span class="tablecap"><span class="tablecap">Mail Transactions Basic Data Source Options</span></span>
+!width="50%"|Option
+!width="50%"|Description
+|-
+|To Address
+
+|The recipient e-mail address. This should be the same as the POP Username.
+
+|-
+|From Address
+
+|The e-mail address that will appear in the From: field in the generated e-mail
+
+|-
+|SMTP Host
+
+|The e-mail server used by <span class="ph">Zenoss platform</span> to send the email
+
+|-
+|POP Host
+
+|The email server where you will retrieve your test message
+
+|}
+
+
+<span class="tiptitle">Tip:</span>
+Any of the <samp class="ph codeph literal">PYMAILTX fields</samp> can take TAL expressions, including the password fields.
+
+</li>
+<li>Click <span class="ph uicontrol guibutton">Save</span> to save your changes.
+</li>
+<li>Navigate to Graphs and you should see some place holders for graphs. After approximately fifteen minutes you should see the graphs begin populating with information.
+</li></ol>
+
+
+== Daemons ==
+
+
+{| class="wikitable"
+!width="50%"|Type
+!width="50%"|Name
+|-
+|Performance Collector
+|zenmailtx
+|}
+
+
+== Managing the Collector Daemon ==
+This daemon is deprecated and is not working under Zenoss 5.x. Use zenpython deamon with PYMAILTX datasource instead.
+
+The zenmailtx daemon:
+
+* Sends the test email message via the specified SMTP server
+* Retrieves the email message from the specified POP server
+* Sends the following information to <span class="ph">Zenoss platform</span>:
+** Time taken to send
+** Time taken to fetch
+** Total time
+
+This daemon appears on the <span class="ph">Zenoss platform</span> Daemons page and can be started, stopped and restarted from there.
