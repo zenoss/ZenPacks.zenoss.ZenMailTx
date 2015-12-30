@@ -1,11 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <configure xmlns="http://namespaces.zope.org/zope">
 
-  <adapter factory=".info.MailTxDataSourceInfo"
-           for=".datasources.MailTxDataSource.MailTxDataSource"
-           provides=".interfaces.IMailTxDataSourceInfo"
-           />
-
   <adapter factory=".datasources.MailTxPythonDataSource.MailTxPythonDataSourceInfo"
            for=".datasources.MailTxPythonDataSource.MailTxPythonDataSource"
            provides=".datasources.MailTxPythonDataSource.IMailTxPythonDataSourceInfo"
